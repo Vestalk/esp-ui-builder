@@ -1,0 +1,181 @@
+{
+  "schema": 1,
+  "display": {
+    "rotation": 1
+  },
+  "pages": [
+    {
+      "name": "main",
+      "background": "#0b1a22",
+      "parameters": [
+        {
+          "name": "temp_day",
+          "type": "series",
+          "max_points": 24,
+          "x_kind": "number",
+          "min": 10,
+          "max": 30,
+          "default": [
+            {
+              "x": 0,
+              "y": 14
+            },
+            {
+              "x": 3,
+              "y": 13
+            },
+            {
+              "x": 6,
+              "y": 15
+            },
+            {
+              "x": 9,
+              "y": 19
+            },
+            {
+              "x": 12,
+              "y": 23
+            },
+            {
+              "x": 15,
+              "y": 24
+            },
+            {
+              "x": 18,
+              "y": 20
+            },
+            {
+              "x": 21,
+              "y": 16
+            }
+          ]
+        },
+        {
+          "name": "week",
+          "type": "series",
+          "max_points": 7,
+          "x_kind": "label",
+          "min": 0,
+          "max": 10,
+          "default": [
+            {
+              "x": "Пн",
+              "y": 3
+            },
+            {
+              "x": "Вт",
+              "y": 7
+            },
+            {
+              "x": "Ср",
+              "y": 5
+            },
+            {
+              "x": "Чт",
+              "y": 9
+            },
+            {
+              "x": "Пт",
+              "y": 4
+            }
+          ]
+        },
+        {
+          "name": "rain",
+          "type": "series",
+          "max_points": 12,
+          "x_kind": "number",
+          "min": 0,
+          "max": 20,
+          "default": [
+            {
+              "x": 1,
+              "y": 2
+            },
+            {
+              "x": 2,
+              "y": 12
+            },
+            {
+              "x": 3,
+              "y": 25
+            },
+            {
+              "x": 4,
+              "y": 6
+            },
+            {
+              "x": 5,
+              "y": -3
+            }
+          ]
+        },
+        {
+          "name": "empty",
+          "type": "series",
+          "max_points": 8,
+          "min": 0,
+          "max": 1
+        }
+      ],
+      "widgets": [
+        {
+          "id": "day",
+          "type": "chart",
+          "x": 6,
+          "y": 6,
+          "w": 150,
+          "h": 110,
+          "color": "#4da3ff",
+          "bind": "temp_day",
+          "chart": {
+            "axis_x": "год",
+            "axis_y": "°C",
+            "style": "line"
+          }
+        },
+        {
+          "id": "days",
+          "type": "chart",
+          "x": 164,
+          "y": 6,
+          "w": 150,
+          "h": 110,
+          "color": "#efa627",
+          "bind": "week",
+          "chart": {
+            "axis_y": "мм",
+            "style": "dots"
+          }
+        },
+        {
+          "id": "bars",
+          "type": "chart",
+          "x": 6,
+          "y": 124,
+          "w": 150,
+          "h": 110,
+          "color": "#5dcaa5",
+          "bind": "rain",
+          "chart": {
+            "axis_x": "день",
+            "y_min": 0,
+            "y_max": 20,
+            "style": "bars",
+            "grid": false
+          }
+        },
+        {
+          "id": "none",
+          "type": "chart",
+          "x": 164,
+          "y": 124,
+          "w": 150,
+          "h": 110,
+          "color": "#ffffff",
+          "bind": "empty"
+        }
+      ]
+    }
+  ]
+}

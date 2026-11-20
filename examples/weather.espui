@@ -1,0 +1,237 @@
+{
+  "schema": 1,
+  "display": {
+    "model": "GMT020-02-8B",
+    "rotation": 1,
+    "spi_hz": 40000000,
+    "mcu": "esp32s3",
+    "driver": "builtin",
+    "pins": {
+      "sck": 12,
+      "mosi": 11,
+      "dc": 9,
+      "cs": 10,
+      "rst": 8,
+      "bl": 7
+    }
+  },
+  "pages": [
+    {
+      "name": "main",
+      "background": "#0b1a22",
+      "parameters": [
+        {
+          "name": "temperature",
+          "type": "float",
+          "min": -40,
+          "max": 85,
+          "default": 21.5
+        },
+        {
+          "name": "humidity",
+          "type": "int",
+          "min": 0,
+          "max": 100,
+          "default": 40
+        },
+        {
+          "name": "pressure",
+          "type": "float",
+          "min": 950,
+          "max": 1050,
+          "default": 1013.2
+        },
+        {
+          "name": "status",
+          "type": "enum",
+          "values": [
+            "Норма",
+            "Увага",
+            "Помилка"
+          ],
+          "default": "Норма"
+        },
+        {
+          "name": "city",
+          "type": "str",
+          "max_len": 20,
+          "default": "Київ"
+        },
+        {
+          "name": "alarm",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "widgets": [
+        {
+          "id": "card",
+          "type": "rect",
+          "x": 6,
+          "y": 4,
+          "w": 308,
+          "h": 92,
+          "color": "#10222c"
+        },
+        {
+          "id": "title",
+          "type": "text",
+          "x": 14,
+          "y": 8,
+          "w": 150,
+          "h": 24,
+          "color": "#9fe1cb",
+          "font_size": 14,
+          "format": "Погода"
+        },
+        {
+          "id": "city_txt",
+          "type": "text",
+          "x": 200,
+          "y": 8,
+          "w": 108,
+          "h": 24,
+          "color": "#8fa3ad",
+          "font_size": 14,
+          "bind": "city",
+          "format": "%s",
+          "align": "right"
+        },
+        {
+          "id": "t_val",
+          "type": "value",
+          "x": 14,
+          "y": 40,
+          "w": 280,
+          "h": 48,
+          "color": "#ffffff",
+          "font_size": 40,
+          "bind": "temperature",
+          "format": "%.1f°C",
+          "rules": [
+            {
+              "kind": "condition",
+              "if": [
+                "alarm",
+                "==",
+                true
+              ],
+              "set": "color",
+              "to": "#ff4b55"
+            }
+          ]
+        },
+        {
+          "id": "sep",
+          "type": "line",
+          "x": 10,
+          "y": 104,
+          "w": 300,
+          "h": 0,
+          "color": "#56707c"
+        },
+        {
+          "id": "h_bar",
+          "type": "bar",
+          "x": 10,
+          "y": 114,
+          "w": 300,
+          "h": 36,
+          "color": "#5dcaa5",
+          "font_size": 12,
+          "bind": "humidity",
+          "format": "Вологість, %"
+        },
+        {
+          "id": "p_arc",
+          "type": "arc",
+          "x": 10,
+          "y": 160,
+          "w": 120,
+          "h": 66,
+          "color": "#efa627",
+          "font_size": 14,
+          "bind": "pressure"
+        },
+        {
+          "id": "st_dot",
+          "type": "circle",
+          "x": 150,
+          "y": 190,
+          "w": 16,
+          "h": 16,
+          "color": "#3fbf6a",
+          "rules": [
+            {
+              "kind": "condition",
+              "if": [
+                "status",
+                "==",
+                "Увага"
+              ],
+              "set": "color",
+              "to": "#efa627"
+            },
+            {
+              "kind": "condition",
+              "if": [
+                "status",
+                "==",
+                "Помилка"
+              ],
+              "set": "color",
+              "to": "#e8251a"
+            }
+          ]
+        },
+        {
+          "id": "st_txt",
+          "type": "text",
+          "x": 172,
+          "y": 186,
+          "w": 148,
+          "h": 22,
+          "color": "#ffffff",
+          "font_size": 12,
+          "bind": "status",
+          "format": "Стан: %s",
+          "rules": [
+            {
+              "kind": "condition",
+              "if": [
+                "status",
+                "!=",
+                "Норма"
+              ],
+              "set": "text",
+              "to": "Перевірте: %s"
+            }
+          ]
+        },
+        {
+          "id": "alarm_lbl",
+          "type": "text",
+          "x": 150,
+          "y": 212,
+          "w": 160,
+          "h": 24,
+          "color": "#ff4b55",
+          "font_size": 16,
+          "format": "ПЕРЕГРІВ",
+          "rules": [
+            {
+              "kind": "condition",
+              "if": [
+                "alarm",
+                "==",
+                false
+              ],
+              "set": "visible",
+              "to": false
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

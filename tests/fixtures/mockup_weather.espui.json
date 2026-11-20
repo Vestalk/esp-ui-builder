@@ -1,0 +1,416 @@
+{
+ "format": "espui",
+ "v": 1,
+ "display": {
+  "rot": 1,
+  "freq": 40,
+  "mcu": "esp32s3",
+  "drv": "builtin",
+  "pins": {
+   "SCL": 12,
+   "SDA": 11,
+   "RES": 8,
+   "DC": 9,
+   "CS": 10,
+   "BLK": 7
+  }
+ },
+ "zoom": 1.5,
+ "pi": 0,
+ "pages": [
+  {
+   "name": "main",
+   "W": [
+    {
+     "rules": [],
+     "font": "serif",
+     "op": 100,
+     "rot": 0,
+     "id": "title",
+     "type": "text",
+     "x": 10,
+     "y": 8,
+     "w": 150,
+     "h": 24,
+     "col": "#9fe1cb",
+     "fs": 14,
+     "bind": "",
+     "fmt": "Погода · Київ"
+    },
+    {
+     "rules": [
+      {
+       "kind": "if",
+       "param": "alarm",
+       "op": "=",
+       "val": true,
+       "prop": "col",
+       "to": "#ff4b55"
+      }
+     ],
+     "font": "serif",
+     "op": 100,
+     "rot": 0,
+     "id": "t_val",
+     "type": "value",
+     "x": 10,
+     "y": 40,
+     "w": 150,
+     "h": 48,
+     "col": "#ffffff",
+     "fs": 40,
+     "bind": "temperature",
+     "fmt": "%.1f°C"
+    },
+    {
+     "rules": [],
+     "font": "serif",
+     "op": 100,
+     "rot": 0,
+     "id": "h_bar",
+     "type": "bar",
+     "x": 10,
+     "y": 100,
+     "w": 300,
+     "h": 36,
+     "col": "#5dcaa5",
+     "fs": 12,
+     "bind": "humidity",
+     "fmt": "Вологість"
+    },
+    {
+     "rules": [
+      {
+       "kind": "if",
+       "param": "status",
+       "op": "=",
+       "val": "Увага",
+       "prop": "col",
+       "to": "#efa627"
+      },
+      {
+       "kind": "if",
+       "param": "status",
+       "op": "=",
+       "val": "Помилка",
+       "prop": "col",
+       "to": "#e8251a"
+      }
+     ],
+     "font": "serif",
+     "op": 100,
+     "rot": 0,
+     "id": "st_dot",
+     "type": "circle",
+     "x": 12,
+     "y": 190,
+     "w": 16,
+     "h": 16,
+     "col": "#3fbf6a",
+     "fs": 0,
+     "bind": "",
+     "fmt": ""
+    },
+    {
+     "rules": [],
+     "font": "serif",
+     "op": 100,
+     "rot": 0,
+     "id": "st_txt",
+     "type": "text",
+     "x": 34,
+     "y": 188,
+     "w": 150,
+     "h": 22,
+     "col": "#ffffff",
+     "fs": 16,
+     "bind": "status",
+     "fmt": "%s"
+    },
+    {
+     "rules": [],
+     "font": "serif",
+     "op": 100,
+     "rot": 0,
+     "id": "t_chart",
+     "type": "chart",
+     "x": 164,
+     "y": 38,
+     "w": 150,
+     "h": 58,
+     "col": "#4da3ff",
+     "fs": 0,
+     "bind": "temp_day",
+     "fmt": "",
+     "xl": "год",
+     "yl": "°C",
+     "ymin": "",
+     "ymax": "",
+     "style": "line",
+     "grid": true
+    },
+    {
+     "rules": [],
+     "font": "serif",
+     "op": 100,
+     "rot": 0,
+     "id": "w_icon",
+     "type": "image",
+     "x": 280,
+     "y": 4,
+     "w": 32,
+     "h": 32,
+     "col": "#ffffff",
+     "fs": 0,
+     "bind": "weather_icon",
+     "fmt": "",
+     "img": "",
+     "fit": "contain",
+     "play": "loop"
+    },
+    {
+     "rules": [
+      {
+       "kind": "if",
+       "param": "alarm",
+       "op": "=",
+       "val": false,
+       "prop": "visible",
+       "to": "0"
+      }
+     ],
+     "font": "serif",
+     "op": 100,
+     "rot": 0,
+     "id": "alarm_lbl",
+     "type": "text",
+     "x": 200,
+     "y": 188,
+     "w": 110,
+     "h": 22,
+     "col": "#ff4b55",
+     "fs": 16,
+     "bind": "",
+     "fmt": "ПЕРЕГРІВ"
+    },
+    {
+     "rules": [
+      {
+       "kind": "map",
+       "param": "temperature",
+       "prop": "angle",
+       "a": -90,
+       "b": 90
+      },
+      {
+       "kind": "if",
+       "param": "temperature",
+       "op": "≥",
+       "val": 40,
+       "prop": "alpha",
+       "to": 50
+      }
+     ],
+     "font": "serif",
+     "op": 100,
+     "rot": 0,
+     "id": "needle",
+     "type": "line",
+     "x": 200,
+     "y": 60,
+     "w": 40,
+     "h": 0,
+     "col": "#efa627",
+     "fs": 0,
+     "bind": "",
+     "fmt": "",
+     "pvp": "custom",
+     "pvx": 0,
+     "pvy": 0
+    },
+    {
+     "rules": [],
+     "font": "serif",
+     "op": 100,
+     "rot": 0,
+     "id": "logo",
+     "type": "image",
+     "x": 250,
+     "y": 200,
+     "w": 48,
+     "h": 32,
+     "col": "#ffffff",
+     "fs": 0,
+     "bind": "",
+     "fmt": "",
+     "img": "/img/logo.bin",
+     "fit": "cover",
+     "play": "loop",
+     "pvp": "c"
+    }
+   ],
+   "P": [
+    {
+     "name": "temperature",
+     "type": "float",
+     "min": -40,
+     "max": 85,
+     "def": 21.5
+    },
+    {
+     "name": "humidity",
+     "type": "int32",
+     "min": 0,
+     "max": 100,
+     "def": 40
+    },
+    {
+     "name": "status",
+     "type": "enum",
+     "vals": [
+      "OK",
+      "Увага",
+      "Помилка"
+     ],
+     "def": "OK"
+    },
+    {
+     "name": "alarm",
+     "type": "bool",
+     "def": false
+    },
+    {
+     "name": "weather_icon",
+     "type": "string",
+     "size": 32,
+     "def": "/img/sun.bin"
+    },
+    {
+     "name": "temp_day",
+     "type": "series",
+     "n": 24,
+     "xk": "num",
+     "min": 10,
+     "max": 30,
+     "def": [
+      {
+       "x": 0,
+       "y": 14
+      },
+      {
+       "x": 3,
+       "y": 13
+      },
+      {
+       "x": 6,
+       "y": 15
+      },
+      {
+       "x": 9,
+       "y": 19
+      },
+      {
+       "x": 12,
+       "y": 23
+      },
+      {
+       "x": 15,
+       "y": 24
+      },
+      {
+       "x": 18,
+       "y": 20
+      },
+      {
+       "x": 21,
+       "y": 16
+      }
+     ]
+    }
+   ],
+   "V": {
+    "temperature": 31.2,
+    "humidity": 40,
+    "status": "Увага",
+    "alarm": false,
+    "weather_icon": "/img/sun.bin",
+    "temp_day": [
+     {
+      "x": 0,
+      "y": 14
+     },
+     {
+      "x": 3,
+      "y": 13
+     },
+     {
+      "x": 6,
+      "y": 15
+     },
+     {
+      "x": 9,
+      "y": 19
+     },
+     {
+      "x": 12,
+      "y": 23
+     },
+     {
+      "x": 15,
+      "y": 24
+     },
+     {
+      "x": 18,
+      "y": 20
+     },
+     {
+      "x": 21,
+      "y": 16
+     }
+    ]
+   }
+  },
+  {
+   "name": "settings",
+   "W": [
+    {
+     "rules": [],
+     "font": "serif",
+     "op": 100,
+     "rot": 0,
+     "id": "hdr",
+     "type": "text",
+     "x": 10,
+     "y": 8,
+     "w": 220,
+     "h": 24,
+     "col": "#9fe1cb",
+     "fs": 14,
+     "bind": "",
+     "fmt": "Нова сторінка"
+    }
+   ],
+   "P": [],
+   "V": {}
+  }
+ ],
+ "images": {
+  "/img/logo.bin": {
+   "name": "logo.png",
+   "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAQAAAACCAIAAADwyuo0AAAAEElEQVR4nGP4z8AARwzIHABvqgf5gNwAKAAAAABJRU5ErkJggg==",
+   "nw": 4,
+   "nh": 2
+  },
+  "/img/spin/": {
+   "name": "spin.gif",
+   "url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR4nGNgYPgPRmAKABf2A/1+6zfzAAAAAElFTkSuQmCC",
+   "nw": 2,
+   "nh": 2,
+   "frames": [
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR4nGNgYPgPRmAKABf2A/1+6zfzAAAAAElFTkSuQmCC",
+    "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAD0lEQVR4nGNg+M8AQhAKABvyA/1tVLjHAAAAAElFTkSuQmCC"
+   ],
+   "delay": 120
+  }
+ }
+}

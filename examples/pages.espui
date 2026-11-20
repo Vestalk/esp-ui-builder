@@ -1,0 +1,147 @@
+{
+  "schema": 1,
+  "display": {
+    "rotation": 1
+  },
+  "pages": [
+    {
+      "name": "main",
+      "background": "#0b1a22",
+      "parameters": [
+        {
+          "name": "temperature",
+          "type": "float",
+          "min": -20,
+          "max": 40,
+          "default": 21.5
+        },
+        {
+          "name": "title",
+          "type": "str",
+          "max_len": 24,
+          "default": "Головна"
+        }
+      ],
+      "widgets": [
+        {
+          "id": "head",
+          "type": "text",
+          "x": 10,
+          "y": 6,
+          "w": 300,
+          "h": 28,
+          "font_size": 16,
+          "color": "#9fe1cb",
+          "bind": "title",
+          "format": "%s"
+        },
+        {
+          "id": "t_val",
+          "type": "value",
+          "x": 10,
+          "y": 50,
+          "w": 300,
+          "h": 60,
+          "font_size": 40,
+          "bind": "temperature",
+          "format": "%.1f°C"
+        },
+        {
+          "id": "hint",
+          "type": "text",
+          "x": 10,
+          "y": 200,
+          "w": 300,
+          "h": 24,
+          "font_size": 12,
+          "color": "#8fa3ad",
+          "format": "Сторінка 1 з 2"
+        }
+      ]
+    },
+    {
+      "name": "settings",
+      "background": "#1a1022",
+      "parameters": [
+        {
+          "name": "title",
+          "type": "str",
+          "max_len": 24,
+          "default": "Налаштування"
+        },
+        {
+          "name": "brightness",
+          "type": "int",
+          "min": 0,
+          "max": 100,
+          "default": 70
+        },
+        {
+          "name": "wifi",
+          "type": "bool",
+          "default": true
+        }
+      ],
+      "widgets": [
+        {
+          "id": "head",
+          "type": "text",
+          "x": 10,
+          "y": 6,
+          "w": 300,
+          "h": 28,
+          "font_size": 16,
+          "color": "#efa627",
+          "bind": "title",
+          "format": "%s"
+        },
+        {
+          "id": "b_bar",
+          "type": "bar",
+          "x": 10,
+          "y": 60,
+          "w": 300,
+          "h": 36,
+          "font_size": 12,
+          "color": "#efa627",
+          "bind": "brightness",
+          "format": "Яскравість"
+        },
+        {
+          "id": "wifi_txt",
+          "type": "text",
+          "x": 10,
+          "y": 120,
+          "w": 300,
+          "h": 28,
+          "font_size": 16,
+          "font": "mono",
+          "format": "Wi-Fi: увімкнено",
+          "rules": [
+            {
+              "kind": "condition",
+              "if": [
+                "wifi",
+                "==",
+                false
+              ],
+              "set": "text",
+              "to": "Wi-Fi: вимкнено"
+            }
+          ]
+        },
+        {
+          "id": "hint",
+          "type": "text",
+          "x": 10,
+          "y": 200,
+          "w": 300,
+          "h": 24,
+          "font_size": 12,
+          "color": "#8fa3ad",
+          "format": "Сторінка 2 з 2"
+        }
+      ]
+    }
+  ]
+}

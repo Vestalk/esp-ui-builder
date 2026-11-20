@@ -1,0 +1,21 @@
+# 2.0" TFT SPI GMT020-02-8B ver 1.21 — the only display of v1.
+model: GMT020-02-8B
+title: '2.0" TFT SPI GMT020-02-8B ver 1.21'
+controller: ST7789
+# Physical size in portrait orientation (rotation 0/2); 1/3 swap them.
+width: 240
+height: 320
+color_format: RGB565
+interface: spi-4wire
+invert: true
+spi_hz:
+  default: 40000000
+  max: 80000000
+# Default wiring for ESP32-S3 (docs/hardware.md); bl is null if the module has no BLK pin.
+default_pins:
+  sck: 12
+  mosi: 11
+  dc: 9
+  cs: 10
+  rst: 8
+  bl: 7

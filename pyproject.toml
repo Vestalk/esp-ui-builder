@@ -1,0 +1,148 @@
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[project]
+name = "espui"
+dynamic = ["version"]
+description = "Visual UI builder for ESP32 displays that generates MicroPython code"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
+    "Operating System :: OS Independent",
+]
+# Runtime dependencies are added by the stage that first needs them
+# see docs/PLAN.md.
+dependencies = [
+    "pydantic>=2.9,<3",
+    "PyYAML>=6",
+    "Jinja2>=3.1",
+    "freetype-py>=2.4",
+    "Pillow>=10",
+    "PySide6>=6.7",
+]
+
+[project.optional-dependencies]
+# Video (MP4, WebM) in the picture library: frames are decoded with PyAV.
+video = ["av>=12"]
+# Stand-alone builds (packaging/espui.spec, .github/workflows/release.yml).
+build = ["pyinstaller>=6.6"]
+dev = [
+    "pytest>=8",
+    "pytest-cov>=5",
+    "syrupy>=4.6",
+    "pytest-qt>=4.4",
+    "av>=12",
+    "ruff>=0.17",
+    "mypy>=1.13",
+    "types-PyYAML",
+    "pre-commit>=4",
+    "mpremote>=1.24",
+]
+
+[project.scripts]
+espui = "espui.cli:main"
+
+[tool.hatch.version]
+path = "src/espui/__init__.py"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/espui"]
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+src = ["src", "tests"]
+# Honour excludes even when pre-commit passes file names explicitly.
+force-exclude = true
+# docs/ holds spec snippets in Markdown, not project code.
+extend-exclude = [
+    "docs",
+    # Third-party driver shipped byte-for-byte (sha256 pinned in drivers.py).
+    "src/espui/generators/micropython/runtime/st7789py.py",
+    # Generator output kept byte-for-byte (tests compare it with a fresh generation).
+    "examples/*_mpy",
+]
+
+[tool.ruff.lint]
+select = [
+    "E", "W",   # pycodestyle
+    "F",        # pyflakes
+    "I",        # isort
+    "B",        # bugbear
+    "UP",       # pyupgrade
+    "SIM",      # simplify
+    "N",        # pep8-naming
+    "RUF",
+    "PT",       # pytest style
+]
+# UI texts and docs are Ukrainian: Cyrillic letters are not "confusables" here.
+ignore = ["RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+# MicroPython scripts: no typing module, device-specific idioms.
+"tools/*.py" = ["UP"]
+# RUF012/RUF046: plain class attributes and int(floor()) are deliberate for MicroPython.
+"src/espui/generators/micropython/runtime/*.py" = ["UP", "RUF012", "RUF046"]
+"tests/runtime/runtime_scenarios.py" = ["UP"]
+# Qt overrides keep Qt's camelCase names (keyPressEvent, boundingRect, ...).
+"src/espui/gui/*.py" = ["N802"]
+# The style sheet reads best one rule per line.
+"src/espui/gui/theme.py" = ["N802", "E501"]
+"tests/gui/*.py" = ["N802", "E501"]
+# Table-driven cases read best one per line.
+"tests/unit/core/*.py" = ["E501"]
+"tests/unit/test_generator.py" = ["E501"]
+"tests/unit/test_fonts.py" = ["E501"]
+"tests/unit/test_images.py" = ["E501"]
+"tests/mpy/test_generated.py" = ["E501"]
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.11"
+plugins = ["pydantic.mypy"]
+mypy_path = "src"
+files = ["src", "tests"]
+strict = true
+warn_unreachable = true
+# On-device MicroPython code: no typing module there; checked by ruff and tests.
+exclude = [
+    '^src/espui/generators/micropython/runtime/',
+    '^tests/runtime/runtime_scenarios\.py$',
+]
+
+# GUI code (Qt) is checked, but not in strict mode.
+[[tool.mypy.overrides]]
+module = ["espui.gui", "espui.gui.*"]
+disallow_untyped_defs = false
+disallow_untyped_calls = false
+disallow_any_generics = false
+warn_return_any = false
+
+# pytest-qt's QtBot methods are untyped.
+[[tool.mypy.overrides]]
+module = ["tests.gui.*"]
+disallow_untyped_calls = false
+
+# FreeType bindings ship no type information.
+[[tool.mypy.overrides]]
+module = ["freetype", "freetype.*"]
+ignore_missing_imports = true
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+minversion = "8.0"
+testpaths = ["tests"]
+addopts = ["-ra", "--strict-markers", "--strict-config"]
+markers = [
+    "mpy: runs code on the MicroPython unix port (skipped if the binary is missing)",
+    "gui: requires Qt / a display server",
+]
+
+[tool.coverage.run]
+source = ["espui"]
+branch = true

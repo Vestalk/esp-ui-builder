@@ -1,0 +1,294 @@
+{
+  "schema": 1,
+  "display": {
+    "rotation": 1
+  },
+  "pages": [
+    {
+      "name": "main",
+      "background": "#0b1a22",
+      "parameters": [
+        {
+          "name": "temperature",
+          "type": "float",
+          "min": -20,
+          "max": 50,
+          "default": 22.4
+        },
+        {
+          "name": "humidity",
+          "type": "int",
+          "min": 0,
+          "max": 100,
+          "default": 48
+        },
+        {
+          "name": "co2",
+          "type": "int",
+          "min": 400,
+          "max": 2000,
+          "default": 720
+        },
+        {
+          "name": "battery",
+          "type": "int",
+          "min": 0,
+          "max": 100,
+          "default": 82
+        },
+        {
+          "name": "history",
+          "type": "series",
+          "max_points": 24,
+          "x_kind": "number",
+          "min": 10,
+          "max": 30,
+          "default": [
+            {
+              "x": 0,
+              "y": 17
+            },
+            {
+              "x": 2,
+              "y": 16.5
+            },
+            {
+              "x": 4,
+              "y": 16
+            },
+            {
+              "x": 6,
+              "y": 16.4
+            },
+            {
+              "x": 8,
+              "y": 18
+            },
+            {
+              "x": 10,
+              "y": 20.5
+            },
+            {
+              "x": 12,
+              "y": 22.8
+            },
+            {
+              "x": 14,
+              "y": 24
+            },
+            {
+              "x": 16,
+              "y": 23.4
+            },
+            {
+              "x": 18,
+              "y": 21.6
+            },
+            {
+              "x": 20,
+              "y": 19.8
+            },
+            {
+              "x": 22,
+              "y": 18.5
+            }
+          ]
+        }
+      ],
+      "widgets": [
+        {
+          "id": "title",
+          "type": "text",
+          "x": 10,
+          "y": 4,
+          "w": 200,
+          "h": 24,
+          "font_size": 16,
+          "color": "#9fe1cb",
+          "format": "Датчики"
+        },
+        {
+          "id": "bat",
+          "type": "value",
+          "x": 230,
+          "y": 4,
+          "w": 82,
+          "h": 24,
+          "font_size": 14,
+          "color": "#8fa3ad",
+          "bind": "battery",
+          "format": "%d%%",
+          "align": "right",
+          "rules": [
+            {
+              "kind": "condition",
+              "if": [
+                "battery",
+                "<",
+                20
+              ],
+              "set": "color",
+              "to": "#ff4b55"
+            }
+          ]
+        },
+        {
+          "id": "dial",
+          "type": "circle",
+          "x": 10,
+          "y": 36,
+          "w": 141,
+          "h": 141,
+          "color": "#10222c"
+        },
+        {
+          "id": "scale",
+          "type": "arc",
+          "x": 20,
+          "y": 56,
+          "w": 121,
+          "h": 66,
+          "color": "#4da3ff",
+          "bind": "temperature",
+          "font_size": 8
+        },
+        {
+          "id": "needle",
+          "type": "line",
+          "x": 80,
+          "y": 120,
+          "w": 50,
+          "h": 0,
+          "color": "#ff4b55",
+          "pivot": "left",
+          "rules": [
+            {
+              "kind": "mapping",
+              "param": "temperature",
+              "prop": "angle",
+              "at_min": -180,
+              "at_max": 0
+            }
+          ]
+        },
+        {
+          "id": "hub",
+          "type": "circle",
+          "x": 69,
+          "y": 109,
+          "w": 23,
+          "h": 23,
+          "color": "#ffffff"
+        },
+        {
+          "id": "t_val",
+          "type": "value",
+          "x": 20,
+          "y": 134,
+          "w": 121,
+          "h": 36,
+          "font_size": 24,
+          "align": "center",
+          "bind": "temperature",
+          "format": "%.1f°C"
+        },
+        {
+          "id": "h_bar",
+          "type": "bar",
+          "x": 164,
+          "y": 36,
+          "w": 148,
+          "h": 36,
+          "font_size": 12,
+          "color": "#5dcaa5",
+          "bind": "humidity",
+          "format": "Вологість, %"
+        },
+        {
+          "id": "co2_lbl",
+          "type": "text",
+          "x": 164,
+          "y": 82,
+          "w": 60,
+          "h": 24,
+          "font_size": 12,
+          "color": "#8fa3ad",
+          "format": "CO₂, ppm"
+        },
+        {
+          "id": "co2_val",
+          "type": "value",
+          "x": 226,
+          "y": 78,
+          "w": 86,
+          "h": 30,
+          "font_size": 24,
+          "align": "right",
+          "color": "#5dcaa5",
+          "bind": "co2",
+          "format": "%d",
+          "rules": [
+            {
+              "kind": "condition",
+              "if": [
+                "co2",
+                ">",
+                1000
+              ],
+              "set": "color",
+              "to": "#efa627"
+            },
+            {
+              "kind": "condition",
+              "if": [
+                "co2",
+                ">",
+                1500
+              ],
+              "set": "color",
+              "to": "#ff4b55"
+            }
+          ]
+        },
+        {
+          "id": "co2_warn",
+          "type": "text",
+          "x": 164,
+          "y": 112,
+          "w": 148,
+          "h": 20,
+          "font_size": 12,
+          "color": "#ff4b55",
+          "format": "Провітріть приміщення",
+          "rules": [
+            {
+              "kind": "condition",
+              "if": [
+                "co2",
+                "<=",
+                1000
+              ],
+              "set": "visible",
+              "to": false
+            }
+          ]
+        },
+        {
+          "id": "trend",
+          "type": "chart",
+          "x": 10,
+          "y": 182,
+          "w": 302,
+          "h": 54,
+          "color": "#efa627",
+          "bind": "history",
+          "chart": {
+            "axis_y": "°C",
+            "style": "line",
+            "grid": true
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,1021 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ESP UI Builder project (.espui)",
+  "description": "Структура файлу проєкту. Узгодженість полів (унікальні назви, прив'язки, умови, піни за чипом) перевіряє програма при відкритті.",
+  "$defs": {
+    "BoolParameter": {
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "bool",
+          "default": "bool",
+          "title": "Type",
+          "type": "string"
+        },
+        "default": {
+          "type": "boolean",
+          "default": false,
+          "title": "Default"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "BoolParameter",
+      "type": "object"
+    },
+    "ChartSettings": {
+      "additionalProperties": true,
+      "properties": {
+        "axis_x": {
+          "default": "",
+          "maxLength": 16,
+          "title": "Axis X",
+          "type": "string"
+        },
+        "axis_y": {
+          "default": "",
+          "maxLength": 16,
+          "title": "Axis Y",
+          "type": "string"
+        },
+        "y_min": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Y Min"
+        },
+        "y_max": {
+          "anyOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Y Max"
+        },
+        "style": {
+          "default": "line",
+          "enum": [
+            "line",
+            "dots",
+            "bars"
+          ],
+          "title": "Style",
+          "type": "string"
+        },
+        "grid": {
+          "default": true,
+          "title": "Grid",
+          "type": "boolean"
+        }
+      },
+      "title": "ChartSettings",
+      "type": "object"
+    },
+    "Chip": {
+      "description": "Microcontrollers a project can target (``display.mcu`` in ``.espui``).",
+      "enum": [
+        "esp32s3",
+        "esp32",
+        "esp32c3"
+      ],
+      "title": "Chip",
+      "type": "string"
+    },
+    "Condition": {
+      "additionalProperties": true,
+      "description": "``{if: [param, op, value], set: prop, to: value}`` — a discrete change.",
+      "properties": {
+        "kind": {
+          "const": "condition",
+          "default": "condition",
+          "title": "Kind",
+          "type": "string"
+        },
+        "if": {
+          "maxItems": 3,
+          "minItems": 3,
+          "prefixItems": [
+            {
+              "type": "string"
+            },
+            {
+              "enum": [
+                "==",
+                "!=",
+                ">",
+                "<",
+                ">=",
+                "<="
+              ],
+              "type": "string"
+            },
+            {
+              "oneOf": [
+                {
+                  "type": "boolean"
+                },
+                {
+                  "type": "integer"
+                },
+                {
+                  "type": "number"
+                },
+                {
+                  "type": "string"
+                }
+              ]
+            }
+          ],
+          "title": "If",
+          "type": "array"
+        },
+        "set": {
+          "enum": [
+            "color",
+            "text",
+            "visible",
+            "opacity",
+            "angle",
+            "x",
+            "y"
+          ],
+          "title": "Set",
+          "type": "string"
+        },
+        "to": {
+          "oneOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "integer"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "To"
+        }
+      },
+      "required": [
+        "if",
+        "set",
+        "to"
+      ],
+      "title": "Condition",
+      "type": "object"
+    },
+    "Display": {
+      "additionalProperties": true,
+      "properties": {
+        "model": {
+          "default": "GMT020-02-8B",
+          "title": "Model",
+          "type": "string"
+        },
+        "rotation": {
+          "default": 0,
+          "maximum": 3,
+          "minimum": 0,
+          "title": "Rotation",
+          "type": "integer"
+        },
+        "spi_hz": {
+          "default": 40000000,
+          "maximum": 80000000,
+          "minimum": 1000000,
+          "title": "Spi Hz",
+          "type": "integer"
+        },
+        "mcu": {
+          "$ref": "#/$defs/Chip",
+          "default": "esp32s3"
+        },
+        "driver": {
+          "$ref": "#/$defs/Driver",
+          "default": "builtin"
+        },
+        "pins": {
+          "$ref": "#/$defs/Pins"
+        }
+      },
+      "title": "Display",
+      "type": "object"
+    },
+    "Driver": {
+      "description": "Python display drivers (``display.driver`` in ``.espui``).",
+      "enum": [
+        "builtin",
+        "st7789py"
+      ],
+      "title": "Driver",
+      "type": "string"
+    },
+    "EditorState": {
+      "additionalProperties": true,
+      "properties": {
+        "zoom": {
+          "default": 1.5,
+          "maximum": 4,
+          "minimum": 0.5,
+          "title": "Zoom",
+          "type": "number"
+        },
+        "page": {
+          "default": 0,
+          "minimum": 0,
+          "title": "Page",
+          "type": "integer"
+        }
+      },
+      "title": "EditorState",
+      "type": "object"
+    },
+    "EnumParameter": {
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "enum",
+          "default": "enum",
+          "title": "Type",
+          "type": "string"
+        },
+        "values": {
+          "items": {
+            "type": "string"
+          },
+          "minItems": 2,
+          "title": "Values",
+          "type": "array"
+        },
+        "default": {
+          "type": "string",
+          "default": "",
+          "title": "Default"
+        }
+      },
+      "required": [
+        "name",
+        "values"
+      ],
+      "title": "EnumParameter",
+      "type": "object"
+    },
+    "FloatParameter": {
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "float",
+          "default": "float",
+          "title": "Type",
+          "type": "string"
+        },
+        "min": {
+          "title": "Min",
+          "type": "number"
+        },
+        "max": {
+          "title": "Max",
+          "type": "number"
+        },
+        "default": {
+          "type": "number",
+          "title": "Default"
+        }
+      },
+      "required": [
+        "name",
+        "min",
+        "max",
+        "default"
+      ],
+      "title": "FloatParameter",
+      "type": "object"
+    },
+    "ImageAsset": {
+      "additionalProperties": true,
+      "description": "Original picture embedded in the project; converted to RGB565 on generation.",
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "path": {
+          "pattern": "^/img/[a-z0-9_-]+(\\.bin|/)$",
+          "title": "Path",
+          "type": "string"
+        },
+        "mime": {
+          "default": "image/png",
+          "title": "Mime",
+          "type": "string"
+        },
+        "data": {
+          "title": "Data",
+          "type": "string"
+        },
+        "width": {
+          "minimum": 1,
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "minimum": 1,
+          "title": "Height",
+          "type": "integer"
+        },
+        "frames": {
+          "anyOf": [
+            {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Frames"
+        },
+        "delay_ms": {
+          "anyOf": [
+            {
+              "maximum": 5000,
+              "minimum": 20,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Delay Ms"
+        }
+      },
+      "required": [
+        "name",
+        "path",
+        "data",
+        "width",
+        "height"
+      ],
+      "title": "ImageAsset",
+      "type": "object"
+    },
+    "ImageSettings": {
+      "additionalProperties": true,
+      "properties": {
+        "file": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "File"
+        },
+        "fit": {
+          "default": "contain",
+          "enum": [
+            "contain",
+            "cover",
+            "fill"
+          ],
+          "title": "Fit",
+          "type": "string"
+        },
+        "play": {
+          "default": "loop",
+          "enum": [
+            "loop",
+            "once"
+          ],
+          "title": "Play",
+          "type": "string"
+        }
+      },
+      "title": "ImageSettings",
+      "type": "object"
+    },
+    "IntParameter": {
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "int",
+          "default": "int",
+          "title": "Type",
+          "type": "string"
+        },
+        "min": {
+          "title": "Min",
+          "type": "integer"
+        },
+        "max": {
+          "title": "Max",
+          "type": "integer"
+        },
+        "default": {
+          "type": "integer",
+          "title": "Default"
+        }
+      },
+      "required": [
+        "name",
+        "min",
+        "max",
+        "default"
+      ],
+      "title": "IntParameter",
+      "type": "object"
+    },
+    "MappingRule": {
+      "additionalProperties": true,
+      "description": "``{param, prop, at_min, at_max}`` — linear dependency on a numeric parameter.",
+      "properties": {
+        "kind": {
+          "const": "mapping",
+          "default": "mapping",
+          "title": "Kind",
+          "type": "string"
+        },
+        "param": {
+          "title": "Param",
+          "type": "string"
+        },
+        "prop": {
+          "enum": [
+            "opacity",
+            "angle",
+            "x",
+            "y"
+          ],
+          "title": "Prop",
+          "type": "string"
+        },
+        "at_min": {
+          "title": "At Min",
+          "type": "number"
+        },
+        "at_max": {
+          "title": "At Max",
+          "type": "number"
+        }
+      },
+      "required": [
+        "param",
+        "prop",
+        "at_min",
+        "at_max"
+      ],
+      "title": "MappingRule",
+      "type": "object"
+    },
+    "Page": {
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "background": {
+          "default": "#000000",
+          "title": "Background",
+          "type": "string"
+        },
+        "parameters": {
+          "items": {
+            "discriminator": {
+              "mapping": {
+                "bool": "#/$defs/BoolParameter",
+                "enum": "#/$defs/EnumParameter",
+                "float": "#/$defs/FloatParameter",
+                "int": "#/$defs/IntParameter",
+                "series": "#/$defs/SeriesParameter",
+                "str": "#/$defs/StrParameter"
+              },
+              "propertyName": "type"
+            },
+            "oneOf": [
+              {
+                "$ref": "#/$defs/FloatParameter"
+              },
+              {
+                "$ref": "#/$defs/IntParameter"
+              },
+              {
+                "$ref": "#/$defs/BoolParameter"
+              },
+              {
+                "$ref": "#/$defs/StrParameter"
+              },
+              {
+                "$ref": "#/$defs/EnumParameter"
+              },
+              {
+                "$ref": "#/$defs/SeriesParameter"
+              }
+            ]
+          },
+          "title": "Parameters",
+          "type": "array"
+        },
+        "widgets": {
+          "items": {
+            "$ref": "#/$defs/Widget"
+          },
+          "title": "Widgets",
+          "type": "array"
+        },
+        "test_values": {
+          "additionalProperties": {
+            "oneOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "$ref": "#/$defs/SeriesPoint"
+                },
+                "type": "array"
+              }
+            ]
+          },
+          "title": "Test Values",
+          "type": "object"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "Page",
+      "type": "object"
+    },
+    "Pins": {
+      "additionalProperties": true,
+      "properties": {
+        "sck": {
+          "minimum": 0,
+          "title": "Sck",
+          "type": "integer"
+        },
+        "mosi": {
+          "minimum": 0,
+          "title": "Mosi",
+          "type": "integer"
+        },
+        "dc": {
+          "minimum": 0,
+          "title": "Dc",
+          "type": "integer"
+        },
+        "cs": {
+          "minimum": 0,
+          "title": "Cs",
+          "type": "integer"
+        },
+        "rst": {
+          "minimum": 0,
+          "title": "Rst",
+          "type": "integer"
+        },
+        "bl": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bl"
+        }
+      },
+      "required": [
+        "sck",
+        "mosi",
+        "dc",
+        "cs",
+        "rst"
+      ],
+      "title": "Pins",
+      "type": "object"
+    },
+    "PivotPoint": {
+      "additionalProperties": true,
+      "description": "Pivot relative to the widget's top-left corner, px.",
+      "properties": {
+        "x": {
+          "title": "X",
+          "type": "number"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "title": "PivotPoint",
+      "type": "object"
+    },
+    "SeriesParameter": {
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "series",
+          "default": "series",
+          "title": "Type",
+          "type": "string"
+        },
+        "max_points": {
+          "default": 24,
+          "maximum": 256,
+          "minimum": 2,
+          "title": "Max Points",
+          "type": "integer"
+        },
+        "x_kind": {
+          "default": "number",
+          "enum": [
+            "number",
+            "label"
+          ],
+          "title": "X Kind",
+          "type": "string"
+        },
+        "min": {
+          "title": "Min",
+          "type": "number"
+        },
+        "max": {
+          "title": "Max",
+          "type": "number"
+        },
+        "default": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/SeriesPoint"
+          },
+          "title": "Default"
+        }
+      },
+      "required": [
+        "name",
+        "min",
+        "max"
+      ],
+      "title": "SeriesParameter",
+      "type": "object"
+    },
+    "SeriesPoint": {
+      "additionalProperties": true,
+      "properties": {
+        "x": {
+          "oneOf": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            }
+          ],
+          "title": "X"
+        },
+        "y": {
+          "title": "Y",
+          "type": "number"
+        }
+      },
+      "required": [
+        "x",
+        "y"
+      ],
+      "title": "SeriesPoint",
+      "type": "object"
+    },
+    "StrParameter": {
+      "additionalProperties": true,
+      "properties": {
+        "name": {
+          "title": "Name",
+          "type": "string"
+        },
+        "type": {
+          "const": "str",
+          "default": "str",
+          "title": "Type",
+          "type": "string"
+        },
+        "max_len": {
+          "default": 32,
+          "maximum": 128,
+          "minimum": 2,
+          "title": "Max Len",
+          "type": "integer"
+        },
+        "default": {
+          "type": "string",
+          "default": "",
+          "title": "Default"
+        },
+        "charset": {
+          "default": "latin_uk",
+          "enum": [
+            "latin_uk",
+            "latin",
+            "digits"
+          ],
+          "title": "Charset",
+          "type": "string"
+        },
+        "extra_chars": {
+          "default": "",
+          "maxLength": 256,
+          "title": "Extra Chars",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "title": "StrParameter",
+      "type": "object"
+    },
+    "Widget": {
+      "additionalProperties": true,
+      "properties": {
+        "id": {
+          "title": "Id",
+          "type": "string"
+        },
+        "type": {
+          "enum": [
+            "rect",
+            "circle",
+            "line",
+            "text",
+            "value",
+            "bar",
+            "arc",
+            "image",
+            "chart"
+          ],
+          "title": "Type",
+          "type": "string"
+        },
+        "x": {
+          "default": 0,
+          "title": "X",
+          "type": "integer"
+        },
+        "y": {
+          "default": 0,
+          "title": "Y",
+          "type": "integer"
+        },
+        "w": {
+          "default": 0,
+          "minimum": 0,
+          "title": "W",
+          "type": "integer"
+        },
+        "h": {
+          "default": 0,
+          "minimum": 0,
+          "title": "H",
+          "type": "integer"
+        },
+        "color": {
+          "default": "#ffffff",
+          "title": "Color",
+          "type": "string"
+        },
+        "font": {
+          "anyOf": [
+            {
+              "enum": [
+                "serif",
+                "mono",
+                "pixel"
+              ],
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Font"
+        },
+        "font_size": {
+          "anyOf": [
+            {
+              "maximum": 72,
+              "minimum": 8,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Font Size"
+        },
+        "bind": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bind"
+        },
+        "format": {
+          "default": "",
+          "title": "Format",
+          "type": "string"
+        },
+        "align": {
+          "default": "left",
+          "enum": [
+            "left",
+            "center",
+            "right"
+          ],
+          "title": "Align",
+          "type": "string"
+        },
+        "opacity": {
+          "default": 100,
+          "maximum": 100,
+          "minimum": 0,
+          "title": "Opacity",
+          "type": "integer"
+        },
+        "rotation_deg": {
+          "default": 0.0,
+          "maximum": 360,
+          "minimum": -360,
+          "title": "Rotation Deg",
+          "type": "number"
+        },
+        "pivot": {
+          "default": "center",
+          "oneOf": [
+            {
+              "enum": [
+                "center",
+                "top_left",
+                "top",
+                "top_right",
+                "left",
+                "right",
+                "bottom_left",
+                "bottom",
+                "bottom_right"
+              ],
+              "type": "string"
+            },
+            {
+              "$ref": "#/$defs/PivotPoint"
+            }
+          ],
+          "title": "Pivot"
+        },
+        "rules": {
+          "items": {
+            "oneOf": [
+              {
+                "$ref": "#/$defs/Condition"
+              },
+              {
+                "$ref": "#/$defs/MappingRule"
+              }
+            ]
+          },
+          "title": "Rules",
+          "type": "array"
+        },
+        "image": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ImageSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "chart": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ChartSettings"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        }
+      },
+      "required": [
+        "id",
+        "type"
+      ],
+      "title": "Widget",
+      "type": "object"
+    }
+  },
+  "additionalProperties": true,
+  "properties": {
+    "schema": {
+      "default": 1,
+      "minimum": 1,
+      "title": "Schema",
+      "type": "integer"
+    },
+    "display": {
+      "$ref": "#/$defs/Display"
+    },
+    "pages": {
+      "items": {
+        "$ref": "#/$defs/Page"
+      },
+      "minItems": 1,
+      "title": "Pages",
+      "type": "array"
+    },
+    "images": {
+      "patternProperties": {
+        "^[a-z0-9_-]{1,64}$": {
+          "$ref": "#/$defs/ImageAsset"
+        }
+      },
+      "title": "Images",
+      "type": "object"
+    },
+    "editor": {
+      "$ref": "#/$defs/EditorState"
+    }
+  },
+  "required": [
+    "pages"
+  ],
+  "type": "object"
+}

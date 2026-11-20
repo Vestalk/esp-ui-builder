@@ -1,0 +1,166 @@
+{
+  "schema": 1,
+  "display": {
+    "rotation": 1
+  },
+  "pages": [
+    {
+      "name": "main",
+      "background": "#0b1a22",
+      "parameters": [
+        {
+          "name": "humidity",
+          "type": "int",
+          "min": 0,
+          "max": 100,
+          "default": 50
+        },
+        {
+          "name": "temperature",
+          "type": "float",
+          "min": -20,
+          "max": 40,
+          "default": 10
+        },
+        {
+          "name": "alarm",
+          "type": "bool",
+          "default": false
+        }
+      ],
+      "widgets": [
+        {
+          "id": "dial",
+          "type": "circle",
+          "x": 20,
+          "y": 20,
+          "w": 161,
+          "h": 161,
+          "color": "#10222c"
+        },
+        {
+          "id": "needle",
+          "type": "line",
+          "x": 100,
+          "y": 100,
+          "w": 70,
+          "h": 0,
+          "color": "#efa627",
+          "pivot": "left",
+          "rules": [
+            {
+              "kind": "mapping",
+              "param": "humidity",
+              "prop": "angle",
+              "at_min": -180,
+              "at_max": 0
+            }
+          ]
+        },
+        {
+          "id": "hub",
+          "type": "circle",
+          "x": 94,
+          "y": 94,
+          "w": 13,
+          "h": 13,
+          "color": "#ffffff"
+        },
+        {
+          "id": "h_txt",
+          "type": "value",
+          "x": 70,
+          "y": 140,
+          "w": 70,
+          "h": 24,
+          "font_size": 16,
+          "bind": "humidity",
+          "format": "%d%%"
+        },
+        {
+          "id": "word",
+          "type": "text",
+          "x": 200,
+          "y": 30,
+          "w": 120,
+          "h": 40,
+          "color": "#ffffff",
+          "font_size": 24,
+          "format": "ПРИВІТ"
+        },
+        {
+          "id": "glass",
+          "type": "rect",
+          "x": 190,
+          "y": 20,
+          "w": 120,
+          "h": 60,
+          "color": "#ff4b55",
+          "opacity": 50,
+          "rules": [
+            {
+              "kind": "condition",
+              "if": [
+                "alarm",
+                "==",
+                true
+              ],
+              "set": "opacity",
+              "to": 90
+            }
+          ]
+        },
+        {
+          "id": "tilt",
+          "type": "rect",
+          "x": 220,
+          "y": 110,
+          "w": 60,
+          "h": 30,
+          "color": "#5dcaa5",
+          "rotation_deg": 30
+        },
+        {
+          "id": "tag",
+          "type": "text",
+          "x": 200,
+          "y": 160,
+          "w": 100,
+          "h": 24,
+          "color": "#9fe1cb",
+          "font_size": 16,
+          "format": "НАХИЛ",
+          "rotation_deg": -20,
+          "pivot": "center"
+        },
+        {
+          "id": "track",
+          "type": "line",
+          "x": 10,
+          "y": 215,
+          "w": 300,
+          "h": 0,
+          "color": "#56707c"
+        },
+        {
+          "id": "marker",
+          "type": "circle",
+          "x": 4,
+          "y": 205,
+          "w": 13,
+          "h": 13,
+          "color": "#4da3ff",
+          "rules": [
+            {
+              "kind": "mapping",
+              "param": "temperature",
+              "prop": "x",
+              "at_min": 4,
+              "at_max": 304
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}
