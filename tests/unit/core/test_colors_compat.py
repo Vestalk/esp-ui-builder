@@ -80,7 +80,7 @@ def test_blend(alpha: float, expected: str) -> None:
 # ------------------------------------------------------------------ compat tables
 def test_operators_per_type() -> None:
     params = {p.name: p for p in make_page([TEMP, LEVEL, FLAG, MODE, NAME, SERIES]).parameters}
-    assert operators_for(params["t"]) == (">", "<", ">=", "<=", "==", "!=")
+    assert operators_for(params["t"]) == (">", "<", ">=", "<=", "==", "!=", "in", "not in")
     assert operators_for(params["n"]) == operators_for(params["t"])
     assert operators_for(params["on"]) == ("==",)
     assert operators_for(params["mode"]) == ("==", "!=")

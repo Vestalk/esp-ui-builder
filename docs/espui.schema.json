@@ -120,7 +120,9 @@
                 ">",
                 "<",
                 ">=",
-                "<="
+                "<=",
+                "in",
+                "not in"
               ],
               "type": "string"
             },
@@ -137,6 +139,33 @@
                 },
                 {
                   "type": "string"
+                },
+                {
+                  "maxItems": 2,
+                  "minItems": 2,
+                  "prefixItems": [
+                    {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    },
+                    {
+                      "anyOf": [
+                        {
+                          "type": "integer"
+                        },
+                        {
+                          "type": "number"
+                        }
+                      ]
+                    }
+                  ],
+                  "type": "array"
                 }
               ]
             }

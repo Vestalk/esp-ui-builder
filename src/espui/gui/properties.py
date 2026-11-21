@@ -416,7 +416,21 @@ class PropertiesPanel(QScrollArea):
 
     # ------------------------------------------------------------------ load
     def load(self) -> None:
-        """Show the selected widget (signals blocked: loading is not an edit)."""
+        """Show the selected widget (signals blocked: loading is not an edit).
+
+        The panel is reloaded after every edit (an angle being dragged, too): painting is
+        held until it is done and the scroll position is kept, so nothing jumps.
+        """
+        bar = self.verticalScrollBar()
+        scroll = bar.value()
+        self.setUpdatesEnabled(False)
+        try:
+            self._load()
+        finally:
+            bar.setValue(scroll)
+            self.setUpdatesEnabled(True)
+
+    def _load(self) -> None:
         widget = self.doc.widget
         self._loading = True
         try:

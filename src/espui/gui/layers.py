@@ -62,6 +62,8 @@ class LayersPanel(QListWidget):
         self.setDropIndicatorShown(True)
         self.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._loading = False
+        self._signature: tuple[object, ...] = ()
+        """What the rows show (see :meth:`refresh`)."""
         self.itemSelectionChanged.connect(self._selected)
         doc.changed.connect(self.refresh)
         doc.current_page_changed.connect(self.refresh)
@@ -73,9 +75,25 @@ class LayersPanel(QListWidget):
         return [self.item(i).data(ID_ROLE) for i in range(self.count())]
 
     def refresh(self) -> None:
+        """Rebuild the rows only if they would read differently; the scroll stays put."""
+        widgets = self.doc.page.widgets
+        texts = tuple(row_text(i + 1, w) for i, w in enumerate(widgets))
+        signature = (self.doc.current, tuple(w.id for w in widgets), texts)
+        if signature == self._signature:
+            self._show_selection()
+            return
+        if signature[:2] == self._signature[:2]:  # same rows, only a label changed (↻, ◐…)
+            self._signature = signature
+            for i, text in enumerate(reversed(texts)):
+                row = self.itemWidget(self.item(i))
+                if isinstance(row, LayerRow):
+                    row.label.setText(text)
+            self._show_selection()
+            return
+        self._signature = signature
+        scroll = self.verticalScrollBar().value()
         self._loading = True
         self.clear()
-        widgets = self.doc.page.widgets
         for list_index in reversed(range(len(widgets))):
             widget = widgets[list_index]
             item = QListWidgetItem()
@@ -92,6 +110,7 @@ class LayersPanel(QListWidget):
             self.setItemWidget(item, row)
         self._loading = False
         self._show_selection()
+        self.verticalScrollBar().setValue(scroll)
 
     def _show_selection(self) -> None:
         self._loading = True

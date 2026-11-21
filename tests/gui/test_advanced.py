@@ -93,6 +93,47 @@ def test_add_and_edit_a_condition(window: MainWindow) -> None:
     assert window.doc.undo_stack.undoText().startswith("Умови")
 
 
+def test_condition_on_a_range(window: MainWindow) -> None:
+    doc = window.doc
+    editor = window.properties.rules_editor
+    doc.select("card")
+    editor.add_condition.click()  # temperature > 15
+    op_combo = editor.rows[0].findChildren(QComboBox)[1]
+    assert op_combo.findText("у діапазоні") >= 0
+    assert op_combo.findText("поза діапазоном") >= 0
+    op_combo.setCurrentIndex(op_combo.findData("in"))
+    op_combo.activated.emit(op_combo.currentIndex())
+    (rule,) = rules_of(window, "card")
+    assert isinstance(rule, Condition)
+    start = rule.value
+    assert isinstance(start, tuple)
+    assert rule.op == "in"
+    lo = editor.rows[0].findChild(QDoubleSpinBox, "range_from")
+    hi = editor.rows[0].findChild(QDoubleSpinBox, "range_to")
+    assert lo is not None
+    assert hi is not None
+    assert (lo.value(), hi.value()) == start
+    lo.setValue(10)
+    hi = editor.rows[0].findChild(QDoubleSpinBox, "range_to")  # the block was rebuilt
+    assert hi is not None
+    hi.setValue(20)
+    (rule,) = rules_of(window, "card")
+    assert isinstance(rule, Condition)
+    assert rule.when == ("temperature", "in", (10, 20))
+    doc.set_test_value("temperature", 20)  # the end is included
+    assert editor.rows[0].property("active")
+    doc.set_test_value("temperature", 25)
+    assert not editor.rows[0].property("active")
+    # back to a single value: "від" is kept
+    op_combo = editor.rows[0].findChildren(QComboBox)[1]
+    op_combo.setCurrentIndex(op_combo.findData(">="))
+    op_combo.activated.emit(op_combo.currentIndex())
+    (rule,) = rules_of(window, "card")
+    assert isinstance(rule, Condition)
+    assert rule.when == ("temperature", ">=", 10)
+    assert editor.rows[0].findChild(QDoubleSpinBox, "range_from") is None
+
+
 def test_add_mapping_with_sensible_ends(window: MainWindow) -> None:
     doc = window.doc
     editor = window.properties.rules_editor

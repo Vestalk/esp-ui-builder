@@ -117,7 +117,6 @@ cd packaging && pyinstaller espui.spec      # dist/: ESP UI Builder.app (macOS) 
 python3 -m venv .venv            # Python ≥ 3.11
 source .venv/bin/activate        # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
-pre-commit install
 
 ruff check . && ruff format --check .
 mypy

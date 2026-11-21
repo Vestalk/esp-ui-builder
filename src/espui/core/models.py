@@ -183,8 +183,29 @@ PARAMETER_TYPES = ("float", "int", "bool", "str", "enum", "series")
 
 
 # ------------------------------------------------------------------ rules
-Operator = Literal["==", "!=", ">", "<", ">=", "<="]
-_OPERATOR_ALIASES = {"=": "==", "≠": "!=", "≥": ">=", "≤": "<="}
+Operator = Literal["==", "!=", ">", "<", ">=", "<=", "in", "not in"]
+RANGE_OPERATORS: tuple[Operator, ...] = ("in", "not in")
+"""``value`` is ``[from, to]``, both ends included: ``from <= v <= to`` (or not)."""
+_OPERATOR_ALIASES = {"=": "==", "≠": "!=", "≥": ">=", "≤": "<=", "∈": "in", "∉": "not in"}
+
+RangeValue = tuple[int | float, int | float]
+
+
+def _compare_kind(value: Any) -> str:
+    if isinstance(value, list | tuple):
+        return "Range"
+    return _value_kind(value)
+
+
+CompareValue = Annotated[
+    Annotated[bool, Tag("Bool")]
+    | Annotated[int, Tag("Int")]
+    | Annotated[float, Tag("Float")]
+    | Annotated[str, Tag("Str")]
+    | Annotated[RangeValue, Tag("Range")],
+    Discriminator(_compare_kind),
+]
+"""What a condition compares with: a value, or ``[from, to]`` for a range operator."""
 
 
 def _operator(value: Any) -> Any:
@@ -199,9 +220,22 @@ class Condition(Model):
     """``{if: [param, op, value], set: prop, to: value}`` — a discrete change."""
 
     kind: Literal["condition"] = "condition"
-    when: tuple[str, Annotated[Operator, BeforeValidator(_operator)], Scalar] = Field(alias="if")
+    when: tuple[str, Annotated[Operator, BeforeValidator(_operator)], CompareValue] = Field(
+        alias="if"
+    )
     prop: ConditionProp = Field(alias="set")
     to: Scalar
+
+    @model_validator(mode="after")
+    def _range_matches_operator(self) -> Condition:
+        is_range = isinstance(self.when[2], tuple)
+        if (self.when[1] in RANGE_OPERATORS) != is_range:
+            raise PydanticCustomError(
+                "condition_range",
+                "«{op}»: діапазон [від, до] потрібен лише для «in» / «not in»",
+                {"op": self.when[1]},
+            )
+        return self
 
     @property
     def param(self) -> str:
@@ -212,8 +246,12 @@ class Condition(Model):
         return self.when[1]
 
     @property
-    def value(self) -> Scalar:
+    def value(self) -> CompareValue:
         return self.when[2]
+
+    @property
+    def is_range(self) -> bool:
+        return self.when[1] in RANGE_OPERATORS
 
 
 class MappingRule(Model):

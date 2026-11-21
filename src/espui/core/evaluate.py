@@ -81,7 +81,16 @@ class ParameterValues:
 
 
 def compare(op: str, left: Any, right: Any) -> bool:
-    """Condition test with strict types: ``True`` never equals ``1``."""
+    """Condition test with strict types: ``True`` never equals ``1``.
+
+    ``in`` / ``not in``: ``right`` is ``(from, to)``, both ends included.
+    """
+    if op in ("in", "not in"):
+        lo, hi = right
+        if isinstance(left, bool) or not isinstance(left, int | float):
+            return op == "not in"
+        inside = bool(lo <= left <= hi)
+        return inside if op == "in" else not inside
     if isinstance(left, bool) != isinstance(right, bool):
         return op == "!="
     if op == "==":

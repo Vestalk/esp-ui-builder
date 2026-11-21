@@ -266,6 +266,13 @@ def _check_condition(rule: Condition, widget: Widget, page: Page, loc: Loc) -> l
 
 def _compare_value_problem(param: Parameter, value: object) -> str | None:
     """Like :func:`value_problem`, but numbers outside the range are allowed (``t > 100``)."""
+    if isinstance(value, tuple):  # in / not in: [from, to]
+        lo, hi = value
+        if any(isinstance(v, bool) for v in value):
+            return "очікуються числа"
+        if lo > hi:
+            return f"діапазон: «від» ({lo:g}) більше за «до» ({hi:g})"
+        return None
     if isinstance(param, FloatParameter | IntParameter):
         if isinstance(value, bool) or not isinstance(value, int | float):
             return "очікується число"

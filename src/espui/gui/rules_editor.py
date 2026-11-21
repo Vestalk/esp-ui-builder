@@ -10,6 +10,7 @@ it with the model and pushes one undo step.
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from PySide6.QtCore import Signal
@@ -44,7 +45,7 @@ from espui.core.models import (
     StrParameter,
     Widget,
 )
-from espui.core.params import default_compare_value
+from espui.core.params import compare_value_for, default_compare_value
 from espui.gui.widgets_catalog import condition_default_to, mapping_defaults
 
 PROP_TITLES = {
@@ -56,7 +57,16 @@ PROP_TITLES = {
     "x": "x",
     "y": "y",
 }
-OP_TITLES = {"==": "=", "!=": "≠", ">": ">", "<": "<", ">=": "≥", "<=": "≤"}
+OP_TITLES = {
+    "==": "=",
+    "!=": "≠",
+    ">": ">",
+    "<": "<",
+    ">=": "≥",
+    "<=": "≤",
+    "in": "у діапазоні",
+    "not in": "поза діапазоном",
+}
 
 
 def _number(lo: float, hi: float, value: float, decimals: int = 1) -> QDoubleSpinBox:
@@ -99,6 +109,10 @@ class RulesEditor(QWidget):
         self.screen_size = (320, 240)
         self.rules: list[dict[str, Any]] = []
         self.rows: list[RuleRow] = []
+        self._key: tuple[Any, ...] | None = None
+        """What the rows were built from (see :meth:`load`)."""
+        self._emitted: str | None = None
+        """The rules this editor sent last (its rows already show them)."""
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         self.rows_box = QVBoxLayout()
@@ -127,13 +141,48 @@ class RulesEditor(QWidget):
     def load(self, widget: Widget, page: Page, screen: tuple[int, int]) -> None:
         self.widget, self.page, self.screen_size = widget, page, screen
         self.rules = [r.model_dump(by_alias=True) for r in widget.rules]
+        # Rebuild the rows only when what they show changed: rebuilding on every edit
+        # (an angle being dragged, a test value) made the panel jump and lose focus.
+        rules = json.dumps(self.rules, sort_keys=True, default=str)
+        key = (
+            widget.id,
+            widget.type,
+            rules,
+            json.dumps([p.model_dump() for p in page.parameters], sort_keys=True, default=str),
+            screen,
+        )
+        # An edit made in a row comes back as the same rules: those rows already show it
+        # (rebuilding would take the field being typed in away). Undo / other edits rebuild.
+        old = self._key
+        from_rows = (
+            old is not None
+            and rules == self._emitted
+            and key[:2] == old[:2]  # same widget
+            and key[3:] == old[3:]  # same parameters and screen
+        )
+        if key != old and not from_rows:
+            self._rebuild(widget, page)
+        self._key = key
+        self._emitted = None
+        values = ParameterValues.for_page(page)
+        for row, rule in zip(self.rows, widget.rules, strict=True):
+            active = isinstance(rule, Condition) and condition_matches(rule, values)
+            if bool(row.property("active")) != active:
+                row.setProperty("active", active)  # red border (theme), as in the mock-up
+                row.setToolTip("Ця умова зараз спрацьовує" if active else "")
+                row.style().unpolish(row)
+                row.style().polish(row)
+        issues = [i for i in check_widget(widget, page, ()) if i.path.startswith("rules")]
+        self.errors.setText("\n".join(f"{_rule_label(i.path)}: {i.message}" for i in issues))
+        self.errors.setVisible(bool(issues))
+
+    def _rebuild(self, widget: Widget, page: Page) -> None:
         for row in self.rows:  # out of the layout now: deleteLater waits for the event loop
             self.rows_box.removeWidget(row)
             row.hide()
             row.setParent(None)
             row.deleteLater()
         self.rows = []
-        values = ParameterValues.for_page(page)
         for index, rule in enumerate(widget.rules):
             row = (
                 self._condition_row(index, rule)
@@ -141,16 +190,10 @@ class RulesEditor(QWidget):
                 else self._mapping_row(index, rule)
             )
             row.setProperty("kind", "condition" if isinstance(rule, Condition) else "mapping")
-            if isinstance(rule, Condition) and condition_matches(rule, values):
-                row.setProperty("active", True)  # red border (theme), as in the mock-up
-                row.setToolTip("Ця умова зараз спрацьовує")
             self.rows_box.addWidget(row)
             self.rows.append(row)
         self.add_condition.setEnabled(bool(self._condition_params()))
         self.add_mapping.setEnabled(bool(self._numeric_params()))
-        issues = [i for i in check_widget(widget, page, ()) if i.path.startswith("rules")]
-        self.errors.setText("\n".join(f"{_rule_label(i.path)}: {i.message}" for i in issues))
-        self.errors.setVisible(bool(issues))
 
     def _condition_params(self) -> list[Parameter]:
         assert self.page is not None
@@ -183,11 +226,14 @@ class RulesEditor(QWidget):
         for op in operators_for(param) if param else ("==",):
             op_combo.addItem(OP_TITLES[op], op)
         op_combo.setCurrentIndex(max(0, op_combo.findData(rule.op)))
-        op_combo.activated.connect(lambda _i: self._set_when(index, 1, op_combo.currentData()))
+        op_combo.activated.connect(lambda _i: self._condition_op(index, op_combo.currentData()))
         layout.addWidget(op_combo)
-        layout.addWidget(
-            self._value_editor(param, rule.value, lambda v: self._set_when(index, 2, v))
-        )
+        if isinstance(rule.value, tuple):
+            layout.addWidget(self._range_editor(param, rule.value, index))
+        else:
+            layout.addWidget(
+                self._value_editor(param, rule.value, lambda v: self._set_when(index, 2, v))
+            )
         layout.addStretch(1)
         layout = frame.row2
         layout.addWidget(QLabel("→"))
@@ -257,6 +303,23 @@ class RulesEditor(QWidget):
         spin.valueChanged.connect(lambda v: commit(int(v) if decimals == 0 else v))
         return spin
 
+    def _range_editor(self, param: Parameter | None, value: tuple[Any, Any], index: int) -> QWidget:
+        """``від [a] до [b]``: both ends are included."""
+        box = QWidget()
+        box.setObjectName("range")
+        row = QHBoxLayout(box)
+        row.setContentsMargins(0, 0, 0, 0)
+        decimals = 0 if isinstance(param, IntParameter) else 2
+        for pos, title in enumerate(("від", "до")):
+            row.addWidget(QLabel(title))
+            spin = _number(-1e6, 1e6, float(value[pos]), decimals)
+            spin.setObjectName("range_from" if pos == 0 else "range_to")
+            spin.valueChanged.connect(
+                lambda v, p=pos: self._set_range(index, p, int(v) if decimals == 0 else v)
+            )
+            row.addWidget(spin)
+        return box
+
     def _to_editor(self, prop: str, value: Any, commit: Any) -> QWidget:
         if prop == "color":
             box = QWidget()
@@ -296,18 +359,39 @@ class RulesEditor(QWidget):
         return spin
 
     # ------------------------------------------------------------------ edits
-    def _emit(self) -> None:
+    def _emit(self, rebuild: bool = True) -> None:
+        """Send the rules; ``rebuild=False``: only a value typed in a row changed."""
+        self._emitted = None if rebuild else json.dumps(self.rules, sort_keys=True, default=str)
         self.changed.emit([dict(r) for r in self.rules])
 
     def _set(self, index: int, key: str, value: Any) -> None:
         self.rules[index][key] = value
-        self._emit()
+        # "to" / "at_min" / "at_max" are just values; a colour also repaints its swatch.
+        colour = key == "to" and self.rules[index].get("set") == "color"
+        self._emit(rebuild=key == "param" or colour)
 
     def _set_when(self, index: int, position: int, value: Any) -> None:
         when = list(self.rules[index]["if"])
         when[position] = value
         self.rules[index]["if"] = when
+        self._emit(rebuild=position != 2)
+
+    def _condition_op(self, index: int, op: str) -> None:
+        """A new operator; the value becomes a range [від, до] for in / not in, and back."""
+        assert self.page is not None
+        when = list(self.rules[index]["if"])
+        when[2] = compare_value_for(op, self.page.parameter(when[0]), when[2])
+        when[1] = op
+        self.rules[index]["if"] = when
         self._emit()
+
+    def _set_range(self, index: int, position: int, value: Any) -> None:
+        when = list(self.rules[index]["if"])
+        bounds = list(when[2])
+        bounds[position] = value
+        when[2] = bounds
+        self.rules[index]["if"] = when
+        self._emit(rebuild=False)
 
     def _condition_param(self, index: int, name: str) -> None:
         assert self.page is not None

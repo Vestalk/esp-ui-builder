@@ -100,13 +100,24 @@ class ParametersPanel(QWidget):
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(screen, 1)
         layout.addWidget(self.code_section)
+        self._signature: tuple[object, ...] = ()
         doc.changed.connect(self.refresh)
         doc.current_page_changed.connect(self.refresh)
         self.refresh()
 
     def refresh(self) -> None:
+        """Rebuild the list only when the parameters change; the scroll stays put."""
+        params = self.doc.page.parameters
+        signature = (self.doc.current, *(p.model_dump_json() for p in params))
+        code = defaults_source(self.doc.page)
+        if self.code.toPlainText() != code:
+            self.code.setPlainText(code)
+        if signature == self._signature:
+            return
+        self._signature = signature
+        scroll = self.list.verticalScrollBar().value()
         self.list.clear()
-        for param in self.doc.page.parameters:
+        for param in params:
             item = QListWidgetItem()
             item.setData(NAME_ROLE, param.name)
             item.setSizeHint(QSize(100, 26))
@@ -127,7 +138,7 @@ class ParametersPanel(QWidget):
             layout.addWidget(edit)
             layout.addWidget(remove)
             self.list.setItemWidget(item, row)
-        self.code.setPlainText(defaults_source(self.doc.page))
+        self.list.verticalScrollBar().setValue(scroll)
 
     # ------------------------------------------------------------------ actions
     def dialog(self, param: Parameter | None = None) -> ParameterDialog:

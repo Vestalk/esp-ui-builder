@@ -286,6 +286,41 @@ frame(d)
     compare(page, frame, expected, tmp_path, f"alarm-{alarm}-{status}")
 
 
+@pytest.mark.parametrize("op", ["in", "not in"])
+def test_range_condition_on_the_board(
+    run_mpy: RunMpy, tmp_path: Path, ui_draw: ModuleType, op: str
+) -> None:
+    """``t in [10, 20]`` (ends included) switches the colour exactly like the preview."""
+    project = serializer.from_dict(
+        {
+            "display": {"rotation": 1},
+            "pages": [
+                {
+                    "name": "main",
+                    "parameters": [{"name": "t", "type": "int", "min": 0, "max": 100, "default": 0}],
+                    "widgets": [
+                        {"id": "r", "type": "rect", "x": 10, "y": 10, "w": 60, "h": 30,
+                         "color": "#ffffff",
+                         "rules": [{"if": ["t", op, [10, 20]], "set": "color", "to": "#ff0000"}]},
+                    ],
+                }
+            ],
+        }
+    )  # fmt: skip
+    values = (0, 9, 10, 15, 20, 21, 100)
+    body = "ui.draw(p)\n" + "".join(f"p['t'] = {v}\nui.update(p)\nframe(d)\n" for v in values)
+    run = run_page(run_mpy, tmp_path, project, body)
+    page = project.pages[0]
+    for v, got in zip(values, run.all("frame"), strict=True):
+        expected = render_page(page, project.display.size, {"t": v})
+        compare(page, got, expected, tmp_path, f"range-{op}-{v}")  # rounded corners: tolerance
+        centre = 25 * got.width + 40
+        assert got.pixels[centre] == expected.pixels[centre], (op, v)  # the colour itself
+    inside = render_page(page, project.display.size, {"t": 15})
+    outside = render_page(page, project.display.size, {"t": 30})
+    assert inside.mismatch(outside) > 0  # the rule really changes something
+
+
 def overlap_project() -> Project:
     return serializer.from_dict(
         {

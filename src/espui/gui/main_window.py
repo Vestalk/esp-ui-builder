@@ -33,7 +33,7 @@ from espui.core.issues import ProjectError
 from espui.core.models import WIDGET_TYPES, EditorState
 from espui.generators.micropython.generator import GenerationError, generate
 from espui.generators.micropython.memory import estimate as estimate_memory
-from espui.gui import theme
+from espui.gui import theme, wheel_guard
 from espui.gui.display_dialog import DisplayDialog, display_label
 from espui.gui.document import Document, new_project
 from espui.gui.generate_dialog import GenerateResultDialog
@@ -98,6 +98,7 @@ class MainWindow(QMainWindow):
     def __init__(self, doc: Document | None = None, data_folder: Path | None = None) -> None:
         super().__init__()
         theme.apply()  # the look of docs/plan.html (light / dark as the system)
+        wheel_guard.install()  # the wheel scrolls panels, never flips a closed drop-down
         self.doc = doc or Document()
         self.autosaver = AutoSaver(self.doc, data_folder, self._store_editor_state)
         self.resize(1280, 800)

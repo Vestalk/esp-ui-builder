@@ -40,7 +40,7 @@ BIND_TYPES: dict[WidgetType, frozenset[str]] = {
     "chart": frozenset({"series"}),
 }
 
-_ALL_OPERATORS: tuple[Operator, ...] = (">", "<", ">=", "<=", "==", "!=")
+_ALL_OPERATORS: tuple[Operator, ...] = (">", "<", ">=", "<=", "==", "!=", "in", "not in")
 
 
 def is_numeric(param: Parameter | None) -> bool:

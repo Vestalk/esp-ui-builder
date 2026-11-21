@@ -10,6 +10,7 @@ from typing import Any
 
 from espui.core.compat import can_bind, operators_for, value_problem
 from espui.core.models import (
+    RANGE_OPERATORS,
     BoolParameter,
     Condition,
     EnumParameter,
@@ -26,6 +27,30 @@ from espui.core.models import (
 
 def is_numeric(param: Parameter) -> bool:
     return isinstance(param, FloatParameter | IntParameter)
+
+
+def compare_value_for(op: str, param: Parameter | None, value: Any) -> Any:
+    """``value`` reshaped for ``op``: a range ``[from, to]`` or a single value.
+
+    Switching to ``in`` / ``not in`` starts with ``[value, max]`` (or the
+    parameter's range); switching back keeps ``from``.
+    """
+    is_range = isinstance(value, list | tuple)
+    if op in RANGE_OPERATORS:
+        if is_range:
+            return list(value)
+        if isinstance(param, IntParameter | FloatParameter):
+            lo = (
+                value
+                if isinstance(value, int | float) and not isinstance(value, bool)
+                else param.min
+            )
+            hi = param.max if param.max >= lo else lo
+            return [lo, hi]
+        return [0, 0]
+    if is_range:
+        return value[0]
+    return value
 
 
 def default_compare_value(param: Parameter) -> Any:
@@ -127,6 +152,9 @@ def _fix_condition(rule: Condition, new: Parameter, retyped: bool) -> Condition:
         op, value = ops[0], default_compare_value(new)
     elif isinstance(new, EnumParameter) and value not in new.values:
         value = new.values[0]
+    if op not in operators_for(new):  # e.g. a range on a parameter that became text
+        ops = operators_for(new) or ("==",)
+        op, value = ops[0], default_compare_value(new)
     return Condition.model_validate(
         {"kind": "condition", "if": [new.name, op, value], "set": rule.prop, "to": rule.to}
     )

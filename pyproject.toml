@@ -39,7 +39,6 @@ dev = [
     "ruff>=0.17",
     "mypy>=1.13",
     "types-PyYAML",
-    "pre-commit>=4",
     "mpremote>=1.24",
 ]
 
@@ -57,7 +56,7 @@ packages = ["src/espui"]
 line-length = 100
 target-version = "py311"
 src = ["src", "tests"]
-# Honour excludes even when pre-commit passes file names explicitly.
+# Honour excludes even when file names are passed explicitly (e.g. by an editor).
 force-exclude = true
 # docs/ holds spec snippets in Markdown, not project code.
 extend-exclude = [

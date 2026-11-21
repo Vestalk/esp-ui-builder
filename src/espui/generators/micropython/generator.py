@@ -455,6 +455,10 @@ def _condition_test(condition: Condition, param: Parameter) -> str:
     value = f"p[{_py(condition.param)}]"
     if isinstance(param, BoolParameter):  # only "==" is allowed for bool
         return value if condition.value is True else f"not {value}"
+    if isinstance(condition.value, tuple):  # in / not in: both ends included
+        lo, hi = condition.value
+        inside = f"{_py(lo)} <= {value} <= {_py(hi)}"
+        return inside if condition.op == "in" else f"not ({inside})"
     return f"{value} {condition.op} {_py(condition.value)}"
 
 

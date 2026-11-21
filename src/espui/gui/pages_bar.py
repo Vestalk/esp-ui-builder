@@ -39,6 +39,13 @@ class PageTabs(QTabBar):
         self.tabCloseRequested.connect(self._close_clicked)
 
     def set_tabs(self, texts: list[str], current: int) -> None:
+        """Rebuild the tabs only if their texts changed (a rebuild scrolls the tab bar)."""
+        if list(texts) == self._texts and self.count() == len(texts) and self.armed is None:
+            if self.currentIndex() != current:
+                self.blockSignals(True)
+                self.setCurrentIndex(current)
+                self.blockSignals(False)
+            return
         self.blockSignals(True)
         self.disarm()
         while self.count():

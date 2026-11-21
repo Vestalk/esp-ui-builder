@@ -238,6 +238,62 @@ def blend565(fg, bg, a):
     return (r5 << 11) | (g6 << 5) | b5
 
 
+def _blend_rect_py(dst, src, sw, x0, y0, x1, y1, a):
+    """Blend the pixels that differ in ``src`` (layer) over ``dst`` (strip), wire order."""
+    for yy in range(y0, y1):
+        o = 2 * (yy * sw + x0)
+        for _ in range(x0, x1):
+            l0 = src[o]
+            l1 = src[o + 1]
+            d0 = dst[o]
+            d1 = dst[o + 1]
+            if l0 != d0 or l1 != d1:
+                # framebuf keeps wire-order values little-endian: byte 0 = high byte.
+                v = blend565((l0 << 8) | l1, (d0 << 8) | d1, a)
+                dst[o] = v >> 8
+                dst[o + 1] = v & 0xFF
+            o += 2
+
+
+# The same loop compiled to machine code (~30x faster on ESP32). Compiled from a
+# string so that a port without the native emitter just keeps the Python loop.
+_BLEND_VIPER = """
+@micropython.viper
+def blend_rect(dst, src, sw: int, x0: int, y0: int, x1: int, y1: int, a: int):
+    d = ptr8(dst)
+    s = ptr8(src)
+    b = 32 - a
+    yy = y0
+    while yy < y1:
+        o = 2 * (yy * sw + x0)
+        e = o + 2 * (x1 - x0)
+        while o < e:
+            l0 = s[o]
+            l1 = s[o + 1]
+            d0 = d[o]
+            d1 = d[o + 1]
+            if l0 != d0 or l1 != d1:
+                fg = (l0 << 8) | l1
+                bg = (d0 << 8) | d1
+                r5 = ((fg >> 11) * a + (bg >> 11) * b + 16) >> 5
+                g6 = (((fg >> 5) & 63) * a + ((bg >> 5) & 63) * b + 16) >> 5
+                b5 = ((fg & 31) * a + (bg & 31) * b + 16) >> 5
+                v = (r5 << 11) | (g6 << 5) | b5
+                d[o] = v >> 8
+                d[o + 1] = v & 0xFF
+            o += 2
+        yy += 1
+"""
+try:
+    import micropython
+
+    _ns = {"micropython": micropython}
+    exec(_BLEND_VIPER, _ns)
+    blend_rect = _ns["blend_rect"]
+except Exception:  # no native emitter (or not MicroPython): the Python loop
+    blend_rect = _blend_rect_py
+
+
 # ------------------------------------------------------------------ primitives
 _clip = [0, 0]  # size of the strip being drawn (set by Page._render)
 _quad = array("h", [0] * 8)
@@ -843,21 +899,8 @@ class Page:
         y0 = by - sy if by > sy else 0
         x1 = bx + bw - sx if bx + bw - sx < sw else sw
         y1 = by + bh - sy if by + bh - sy < sh else sh
-        dst = self._mv
-        src = self._layer
-        for yy in range(y0, y1):
-            o = 2 * (yy * sw + x0)
-            for _ in range(x0, x1):
-                l0 = src[o]
-                l1 = src[o + 1]
-                d0 = dst[o]
-                d1 = dst[o + 1]
-                if l0 != d0 or l1 != d1:
-                    # framebuf keeps wire-order values little-endian: byte 0 = high byte.
-                    v = blend565((l0 << 8) | l1, (d0 << 8) | d1, level)
-                    dst[o] = v >> 8
-                    dst[o + 1] = v & 0xFF
-                o += 2
+        if x1 > x0 and y1 > y0:
+            blend_rect(self._mv, self._layer, sw, x0, y0, x1, y1, level)
 
     # -------------------------------------------------------------- rendering
     def _render(self, region):
