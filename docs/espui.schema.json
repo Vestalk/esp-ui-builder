@@ -215,6 +215,20 @@
         },
         "pins": {
           "$ref": "#/$defs/Pins"
+        },
+        "buf_bytes": {
+          "default": 16384,
+          "maximum": 4000000,
+          "minimum": 1024,
+          "title": "Buf Bytes",
+          "type": "integer"
+        },
+        "image_cache": {
+          "default": 0,
+          "maximum": 32000000,
+          "minimum": 0,
+          "title": "Image Cache",
+          "type": "integer"
         }
       },
       "title": "Display",

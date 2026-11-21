@@ -20,8 +20,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from espui.generators.micropython.generator import MAIN_EXAMPLE_FILE
-
 HINT = (
     "Відкрийте цю папку у VS Code і виконайте команду MicroPico «Upload project to Pico»: "
     "завантажаться і .py, і картинки img/*.bin (.vscode/settings.json це вже налаштовує)."
@@ -49,8 +47,6 @@ class GenerateResultDialog(QDialog):
         summary = QLabel(f"Папка: {folder}")
         summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         lines = [*notes, *(f"⚠ {w}" for w in warnings)]
-        if any(p.name == MAIN_EXAMPLE_FILE for p in written):
-            lines.append("main.py змінено вами: його не чіпали, новий приклад — у main.example.py.")
         self.info = QLabel("\n".join(lines))
         self.info.setWordWrap(True)
         hint = QLabel(HINT)

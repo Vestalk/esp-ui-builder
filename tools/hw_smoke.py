@@ -22,7 +22,7 @@ PINS = {
     "rst": 8,
     "blk": 7,  # set to None if the module has no BLK pin
 }
-SPI_ID = 2  # hardware SPI (FSPI on ESP32-S3)
+SPI_ID = 1  # hardware SPI: SPI(1) = FSPI on ESP32-S3 (SPI(2) resets the board)
 SPI_BAUDRATE = 40_000_000
 WIDTH = 240
 HEIGHT = 320

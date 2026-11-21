@@ -489,12 +489,22 @@ class MainWindow(QMainWindow):
 
     def generate_dialog(self) -> None:
         start = generate_dir(self.doc.path) or self._last_dir()
-        folder = QFileDialog.getExistingDirectory(self, "Папка для файлів плати", str(start))
+        folder = QFileDialog.getExistingDirectory(
+            self, f"Де створити папку «{self.output_name()}»", str(start)
+        )
         if folder:
             self.generate_to(Path(folder))
 
-    def generate_to(self, folder: Path) -> bool:
-        """Check the project, write the files, show what was written."""
+    def output_name(self) -> str:
+        """Name of the folder the files go into: the page, or the project for several pages."""
+        pages = self.doc.project.pages
+        if len(pages) == 1 or self.doc.path is None:
+            return pages[0].name
+        return self.doc.path.stem
+
+    def generate_to(self, parent: Path) -> bool:
+        """Check the project, write the files into ``parent/<name>``, show what was written."""
+        folder = parent / self.output_name()
         problems = check_project(self.doc.project)
         if problems:
             listed = "\n".join(f"• {p}" for p in problems[:12])
@@ -507,7 +517,7 @@ class MainWindow(QMainWindow):
         except (OSError, ProjectError, GenerationError) as error:
             QMessageBox.critical(self, "Генерація", str(error))
             return False
-        remember_generate_dir(self.doc.path, folder)
+        remember_generate_dir(self.doc.path, parent)
         self.statusBar().showMessage(f"Згенеровано в {folder}", 8000)
         self.last_result = GenerateResultDialog(
             folder, written, result.notes, result.warnings, self

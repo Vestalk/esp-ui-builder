@@ -661,6 +661,67 @@ out("row", len(ui_draw._row[0]))
         compare(page, got, expected, tmp_path, f"icon{path.replace('/', '_')}")
 
 
+def test_image_cache_gives_the_same_frames(
+    run_mpy: RunMpy, tmp_path: Path, pictures: Project, ui_draw: ModuleType
+) -> None:
+    """IMAGE_CACHE keeps pictures in RAM; what is drawn stays the same."""
+    body = """
+ui_draw.IMAGE_CACHE = 10_000_000
+ui.draw(p)
+frame(d)
+for path in ("/img/rain.bin", "/img/none.bin", "/img/sun.bin"):
+    ui.set_weather_icon(path)
+    frame(d)
+out("cached", sorted(k[len(ui_draw.ROOT):] for k in ui_draw._cache))
+out("used", ui_draw._cache_used[0])
+ui_draw.IMAGE_CACHE = 0
+"""
+    run = run_page(run_mpy, tmp_path, pictures, body)
+    page = pictures.pages[0]
+    frames = run.all("frame")
+    values = [{}] + [
+        {"weather_icon": v} for v in ("/img/rain.bin", "/img/none.bin", "/img/sun.bin")
+    ]
+    for i, (got, extra) in enumerate(zip(frames, values, strict=True)):
+        expected = render_page(page, pictures.display.size, extra, images=pictures.images)
+        compare(page, got, expected, tmp_path, f"cache{i}")
+    (cached,) = run.all("cached")
+    assert "/img/rain.bin" in cached
+    assert "/img/sun.bin" in cached
+    assert "/img/none.bin" not in cached  # a missing file is never cached
+    (used,) = run.all("used")
+    assert used == sum((tmp_path / name.lstrip("/")).stat().st_size for name in cached)
+
+
+def test_memory_settings_come_with_the_display(
+    run_mpy: RunMpy, tmp_path: Path, pictures: Project, ui_draw: ModuleType
+) -> None:
+    """ui_display's BUF_BYTES / IMAGE_CACHE reach the page through the Display object."""
+    body = """
+import ui_display
+real = ui_display.Display("x", d.width, d.height, d.blit, None, None)
+out("defaults", [real.buf_bytes, real.image_cache])
+d.buf_bytes = 10 ** 7
+d.image_cache = 12345
+big = ui_main.UI(d)
+out("buf", [len(big._buf), ui_draw.IMAGE_CACHE])
+big.draw(p)
+frame(d)
+d.buf_bytes = 1
+small = ui_main.UI(d)
+out("small", len(small._buf))
+"""
+    run = run_page(run_mpy, tmp_path, pictures, body)
+    width, height = pictures.display.size
+    assert run.all("defaults") == [[16_384, 0]]
+    assert run.all("buf") == [[2 * width * height, 12345]]  # capped at a whole screen
+    assert run.all("small") == [2 * width]  # at least one row
+    page = pictures.pages[0]
+    (got,) = run.all("frame")
+    compare(page, got, render_page(page, pictures.display.size, images=pictures.images),
+            tmp_path, "whole-screen")  # fmt: skip
+
+
 def test_animations_tick_and_play_once(
     run_mpy: RunMpy, tmp_path: Path, pictures: Project, ui_draw: ModuleType
 ) -> None:

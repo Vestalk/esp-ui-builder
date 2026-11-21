@@ -435,6 +435,13 @@ def _default_pins() -> Pins:
     return Pins.model_validate(get_profile(DEFAULT_MODEL).default_pins)
 
 
+DEFAULT_BUF_BYTES = 16_384
+"""Fits boards without PSRAM (<= 32 KB, docs/benchmarks.md)."""
+MIN_BUF_BYTES = 1_024
+MAX_BUF_BYTES = 4_000_000
+MAX_IMAGE_CACHE = 32_000_000
+
+
 class Display(Model):
     model: str = DEFAULT_MODEL
     rotation: int = Field(0, ge=0, le=3)
@@ -443,6 +450,19 @@ class Display(Model):
     mcu: Chip = Chip.ESP32S3
     driver: Driver = DEFAULT_DRIVER
     pins: Pins = Field(default_factory=_default_pins)
+    buf_bytes: int = Field(DEFAULT_BUF_BYTES, ge=MIN_BUF_BYTES, le=MAX_BUF_BYTES)
+    """RAM for one strip of the region being redrawn (ui_draw.BUF_BYTES).
+
+    Bigger means fewer strips per update (less visible redrawing); a whole
+    screen (2 * w * h) needs PSRAM. Never more than a screen is allocated.
+    """
+    image_cache: int = Field(0, ge=0, le=MAX_IMAGE_CACHE)
+    """RAM for keeping pictures after the first read (ui_draw.IMAGE_CACHE); 0 = off."""
+
+    @property
+    def screen_bytes(self) -> int:
+        """A whole-screen buffer: the most the region buffer can use."""
+        return 2 * self.profile.width * self.profile.height
 
     @property
     def profile(self) -> DisplayProfile:

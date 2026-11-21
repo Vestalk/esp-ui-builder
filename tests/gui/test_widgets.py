@@ -172,6 +172,35 @@ def test_dialog_keeps_an_unusual_frequency(qtbot: QtBot) -> None:
     assert dialog.display().spi_hz == 26_000_000
 
 
+def test_dialog_memory_presets(dialog: DisplayDialog) -> None:
+    assert dialog.memory.currentIndex() == 0  # no PSRAM: 16 KB, no cache
+    assert (dialog.display().buf_bytes, dialog.display().image_cache) == (16_384, 0)
+    assert "смуги по ~34 рядків" in dialog.memory_note.text()  # 16 KB / (2 * 240)
+    assert "PSRAM" not in dialog.memory_note.text()
+    dialog.memory.setCurrentIndex(3)  # PSRAM 8 MB
+    display = dialog.display()
+    assert (display.buf_bytes, display.image_cache) == (240 * 320 * 2, 4 * 1024 * 1024)
+    assert (dialog.buffer_kb.value(), dialog.cache_kb.value()) == (150, 4096)
+    assert "весь екран за раз" in dialog.memory_note.text()
+    assert "Потрібна плата з PSRAM" in dialog.memory_note.text()
+    dialog.cache_kb.setValue(512)  # an own value: the preset becomes "Своє"
+    assert dialog.memory.currentText() == "Своє"
+    assert dialog.display().image_cache == 512 * 1024
+    dialog.buffer_kb.setValue(1000)  # more than a screen is never allocated
+    assert dialog.display().buf_bytes == 240 * 320 * 2
+    assert ok_enabled(dialog)
+
+
+def test_dialog_reopens_with_saved_memory(qtbot: QtBot) -> None:
+    dialog = DisplayDialog(Display(buf_bytes=153_600, image_cache=1024 * 1024))
+    qtbot.addWidget(dialog)
+    assert dialog.memory.currentIndex() == 2  # PSRAM 2 MB
+    other = DisplayDialog(Display(buf_bytes=48 * 1024))
+    qtbot.addWidget(other)
+    assert other.memory.currentText() == "Своє"
+    assert other.display().buf_bytes == 48 * 1024
+
+
 # ------------------------------------------------------------------ work area
 @pytest.fixture
 def workspace(qtbot: QtBot, doc: Document) -> Workspace:
@@ -290,8 +319,8 @@ def test_window_save_and_generate(
     assert window._save_to(tmp_path / "copy.espui")
     assert window.windowTitle() == "copy.espui — ESP UI Builder"
     assert window.generate_to(tmp_path / "out")
-    assert (tmp_path / "out" / "ui_home.py").is_file()
-    assert (tmp_path / "out" / "ui_settings.py").is_file()
+    assert (tmp_path / "out" / "copy" / "ui_home.py").is_file()  # several pages: project name
+    assert (tmp_path / "out" / "copy" / "ui_settings.py").is_file()
 
 
 def test_open_error_is_reported(

@@ -541,6 +541,14 @@ ROOT = ""  # prefix of board paths ("/img/..."); tests on a PC point it at a fol
 MISSING_COLOR = 0x2511  # #13252f: a missing / unreadable picture
 MISSING_BORDER = 0x8F53  # #56707c
 _row = [None, 0]  # reusable row buffer: [bytearray, width]
+IMAGE_CACHE = 0
+"""RAM (bytes) for keeping pictures after the first read; 0 = read them from flash each time.
+
+Boards with PSRAM: e.g. ``ui_draw.IMAGE_CACHE = 2_000_000`` makes redrawing over a
+picture several times faster. Pictures that don't fit are still read row by row.
+"""
+_cache = {}  # path -> FrameBuffer of the whole picture
+_cache_used = [0]
 _anims = {}  # folder -> (frames, delay_ms) read from anim.json
 
 
@@ -579,6 +587,10 @@ def image(fb, x, y, w, h, path):
     r1 = _clip[1] - y if _clip[1] - y < h else h
     if r1 <= r0:
         return
+    pic = _cached(path, w, h)
+    if pic is not None:
+        fb.blit(pic, x, y)
+        return
     buf = _row_fb(w)
     row = framebuf.FrameBuffer(buf, w, 1, framebuf.RGB565)
     try:
@@ -589,6 +601,23 @@ def image(fb, x, y, w, h, path):
                 fb.blit(row, x, y + r)
     except OSError:
         missing(fb, x, y, w, h)
+
+
+def _cached(path, w, h):
+    """The whole picture in RAM if :data:`IMAGE_CACHE` allows it, else None."""
+    pic = _cache.get(path)
+    if pic is not None or _cache_used[0] + 2 * w * h > IMAGE_CACHE:
+        return pic
+    try:
+        data = bytearray(2 * w * h)
+        with open(path, "rb") as f:
+            f.readinto(data)
+    except (OSError, MemoryError):
+        return None
+    pic = framebuf.FrameBuffer(data, w, h, framebuf.RGB565)
+    _cache[path] = pic
+    _cache_used[0] += len(data)
+    return pic
 
 
 def anim_info(path):
@@ -653,11 +682,20 @@ class Page:
     USES_ALPHA = False
     ANIMS = ()  # (("id", loop), ...): widgets that can show an animation folder
 
-    def __init__(self, display, p=None, buf_bytes=BUF_BYTES):
+    def __init__(self, display, p=None, buf_bytes=None):
+        global IMAGE_CACHE
         self.display = display
         self.p = dict(self.DEFAULTS) if p is None else p
         self.width = display.width
         self.height = display.height
+        # Memory settings come with the display (ui_display: BUF_BYTES, IMAGE_CACHE).
+        if buf_bytes is None:
+            buf_bytes = getattr(display, "buf_bytes", BUF_BYTES)
+        cache = getattr(display, "image_cache", None)
+        if cache is not None:
+            IMAGE_CACHE = cache
+        if buf_bytes > 2 * self.width * self.height:
+            buf_bytes = 2 * self.width * self.height
         if buf_bytes < 2 * self.width:
             buf_bytes = 2 * self.width
         # One region buffer (and one alpha layer) for all pages: only one page draws at a time.

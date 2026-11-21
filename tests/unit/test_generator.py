@@ -105,7 +105,7 @@ def test_runtime_files_are_copied_unchanged() -> None:
     [
         (
             {},
-            ['DRIVER = "builtin"', "SPI_ID = 2  # ESP32-S3", "ROTATION = 0", "SPI_HZ = 40_000_000"],
+            ['DRIVER = "builtin"', "SPI_ID = 1  # ESP32-S3", "ROTATION = 0", "SPI_HZ = 40_000_000"],
         ),
         (
             {
@@ -811,39 +811,43 @@ def test_pictures_on_pages_with_other_backgrounds(tmp_path: Path) -> None:
     assert '"/img/dot.bin")' in result.files["ui_c.py"].decode()
 
 
-def test_edited_main_is_kept(tmp_path: Path) -> None:
-    """main.py is the developer's once edited: the new example goes to main.example.py."""
+def test_regeneration_replaces_files(tmp_path: Path) -> None:
+    """Generating into the same folder again replaces everything it wrote before."""
     import json
 
-    result = generate(project([{"id": "r", "type": "rect"}]))
-    written = result.write(tmp_path)
-    assert (tmp_path / "main.py") in written
-    manifest = json.loads((tmp_path / MANIFEST).read_text())
-    assert set(manifest) == set(result.files)
-    result.write(tmp_path)  # unchanged main.py: simply rewritten
-    assert not (tmp_path / "main.example.py").exists()
+    two = project([{"id": "r", "type": "rect"}])
+    two.pages.append(two.pages[0].model_copy(update={"name": "extra"}))
+    written = generate(two).write(tmp_path)
+    assert (tmp_path / "ui_extra.py") in written
     (tmp_path / "main.py").write_text("# mine\n")
-    written = result.write(tmp_path)
-    assert (tmp_path / "main.example.py") in written
-    assert (tmp_path / "main.py").read_text() == "# mine\n"
-    assert json.loads((tmp_path / MANIFEST).read_text())["main.py"] == manifest["main.py"]
+    (tmp_path / "main.example.py").write_text("# from an older version\n")
+    (tmp_path / "notes.txt").write_text("not generated\n")
+
+    result = generate(project([{"id": "r", "type": "rect"}]))
+    result.write(tmp_path)
+    assert (tmp_path / "main.py").read_bytes() == result.files["main.py"]
+    assert not (tmp_path / "main.example.py").exists()
+    assert not (tmp_path / "ui_extra.py").exists()  # the deleted page is gone
+    assert (tmp_path / "notes.txt").is_file()  # not ours: left alone
+    assert set(json.loads((tmp_path / MANIFEST).read_text())) == set(result.files)
     (tmp_path / MANIFEST).write_text("{broken")
-    result.write(tmp_path)  # no manifest: an existing main.py counts as the developer's
-    assert (tmp_path / "main.py").read_text() == "# mine\n"
+    result.write(tmp_path)  # a broken manifest doesn't stop generation
+    assert (tmp_path / "main.py").read_bytes() == result.files["main.py"]
 
 
-def test_cli_reports_kept_main(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+def test_cli_replaces_main(tmp_path: Path) -> None:
     out = tmp_path / "out"
     assert main(["generate", str(EXAMPLE), "-o", str(out)]) == 0
+    generated = (out / "main.py").read_text()
     (out / "main.py").write_text("# mine\n")
-    capsys.readouterr()
     assert main(["generate", str(EXAMPLE), "-o", str(out)]) == 0
-    assert "новий приклад записано в main.example.py" in capsys.readouterr().err
+    assert (out / "main.py").read_text() == generated
 
 
 # ------------------------------------------------------------------ memory estimate (stage 15)
 def test_memory_estimate() -> None:
-    from espui.generators.micropython.memory import REGION_BUFFER, estimate
+    from espui.core.models import DEFAULT_BUF_BYTES as REGION_BUFFER
+    from espui.generators.micropython.memory import estimate
 
     images = serializer.load(ROOT / "examples" / "images.espui")
     memory = estimate(images)
@@ -860,6 +864,30 @@ def test_memory_estimate() -> None:
     assert plain.images == 0
     assert REGION_BUFFER < plain.ram < 2 * REGION_BUFFER + plain.fonts
     assert "картинки 0)" in plain.summary()
+
+
+def test_memory_settings_go_to_the_board_and_the_estimate() -> None:
+    """Region buffer and picture cache: written to ui_display.py, counted in RAM."""
+    from espui.generators.micropython.memory import estimate
+
+    project = serializer.load(ROOT / "examples" / "images.espui")
+    base = estimate(project)
+    display = project.display
+    big = project.model_copy(
+        update={
+            "display": display.model_copy(update={"buf_bytes": 1_000_000, "image_cache": 2_000_000})
+        }
+    )
+    settings = generate(big).files["ui_display.py"].decode()
+    assert "BUF_BYTES = 1_000_000  #" in settings
+    assert "IMAGE_CACHE = 2_000_000  #" in settings
+    memory = estimate(big)
+    # The buffer is capped at a whole screen (twice: translucent widgets); the cache at the pictures.
+    region = display.screen_bytes - 16_384
+    assert memory.ram == base.ram + 2 * region + base.images
+    defaults = generate(project).files["ui_display.py"].decode()
+    assert "BUF_BYTES = 16_384  #" in defaults
+    assert "IMAGE_CACHE = 0  #" in defaults
 
 
 def test_sizing_without_conversion_matches() -> None:

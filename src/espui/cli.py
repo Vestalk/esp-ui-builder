@@ -72,11 +72,6 @@ def _generate(args: argparse.Namespace) -> int:
     titles = ", ".join(f"«{name}»" for name in result.pages)
     label = "Сторінка" if len(result.pages) == 1 else "Сторінки"
     print(f"{label} {titles} → {args.out}:")
-    if any(path.name == "main.example.py" for path in paths):
-        print(
-            "Увага: main.py змінено вами — новий приклад записано в main.example.py",
-            file=sys.stderr,
-        )
     for path in paths:
         name = path.relative_to(args.out).as_posix()
         if not name.startswith("img/"):  # pictures are summed up in the notes above

@@ -5,7 +5,8 @@ An estimate for the status bar, from the same generation the board gets
 
 * flash: code (``*.py``), fonts (``ui_fonts.py``), pictures (``img/``);
 * RAM: the region buffer shared by all pages (twice with translucent widgets),
-  the decoded glyph bitmaps and one row of the widest picture. Interpreter,
+  the decoded glyph bitmaps, one row of the widest picture and the picture
+  cache (at most the pictures themselves). Interpreter,
   modules and parameters come on top and depend on the firmware.
 """
 
@@ -17,9 +18,6 @@ from dataclasses import dataclass
 from espui.core.models import Project
 from espui.generators.micropython.fonts import FONTS_FILE
 from espui.generators.micropython.generator import IMG_DIR, generate
-
-REGION_BUFFER = 16384
-"""ui_draw.BUF_BYTES: one strip of the screen being drawn."""
 
 _GLYPH_BYTES_RE = re.compile(r"glyphs, (\d+) bytes")
 
@@ -69,5 +67,8 @@ def estimate(project: Project) -> MemoryEstimate:
     widest = max(
         (w.w for page in project.pages for w in page.widgets if w.type == "image"), default=0
     )
-    ram = REGION_BUFFER * (2 if translucent else 1) + glyphs + 2 * widest
+    display = project.display
+    region = min(display.buf_bytes, display.screen_bytes)
+    cache = min(display.image_cache, images)
+    ram = region * (2 if translucent else 1) + glyphs + 2 * widest + cache
     return MemoryEstimate(code, fonts, images, ram)

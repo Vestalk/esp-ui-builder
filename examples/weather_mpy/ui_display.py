@@ -13,12 +13,14 @@
 # --- settings ---------------------------------------------------------------
 DRIVER = "builtin"  # "builtin" | "st7789py"
 PINS = {"sck": 12, "mosi": 11, "cs": 10, "dc": 9, "rst": 8, "blk": 7}  # blk: None if absent
-SPI_ID = 2  # ESP32-S3
+SPI_ID = 1  # ESP32-S3
 SPI_HZ = 40_000_000
 WIDTH = 240  # physical panel size, portrait
 HEIGHT = 320
 ROTATION = 1  # 0-3
 INVERT = True
+BUF_BYTES = 16_384  # region buffer: one strip of what is redrawn
+IMAGE_CACHE = 0  # RAM for keeping pictures (0 = read from flash each time)
 # -----------------------------------------------------------------------------
 
 _CONTROL_PINS = ("cs", "dc", "rst", "blk")
@@ -38,6 +40,8 @@ class Display:
         self.blit = blit
         self.fill_rect = fill_rect
         self.backlight = backlight
+        self.buf_bytes = BUF_BYTES  # read by ui_draw.Page
+        self.image_cache = IMAGE_CACHE
 
 
 def check_area(x, y, w, h, width, height):

@@ -164,11 +164,13 @@ def test_recent_projects(qtbot: QtBot, tmp_path: Path) -> None:
 
 
 # ------------------------------------------------------------------ generation
-def test_generate_files_and_protect_main(qtbot: QtBot, tmp_path: Path) -> None:
+def test_generate_files_and_replace_them(qtbot: QtBot, tmp_path: Path) -> None:
     win = make_window(qtbot, tmp_path / "data")
     win.open_file(IMAGES)
-    out = tmp_path / "board"
-    assert win.generate_to(out)
+    parent = tmp_path / "board"
+    assert win.generate_to(parent)
+    out = parent / win.doc.page.name  # a folder named after the page, inside the chosen one
+    assert win.last_result.folder == out
     dialog = win.last_result
     names = [dialog.files.item(i).text().split(" · ")[0] for i in range(dialog.files.count())]
     for expected in ("ui_display.py", "ui_st7789.py", "ui_fonts.py", "ui_main.py", "main.py",
@@ -179,13 +181,14 @@ def test_generate_files_and_protect_main(qtbot: QtBot, tmp_path: Path) -> None:
     assert "ui.draw(p)" in dialog.viewer.toPlainText()
     dialog.files.setCurrentRow(names.index("img/sun.bin"))
     assert dialog.viewer.toPlainText().startswith("sun.bin: RGB565, 8192 байт")
-    assert session.generate_dir(win.doc.path) == out
+    assert session.generate_dir(win.doc.path) == parent
+    assert sorted(p.name for p in parent.iterdir()) == [out.name]
 
+    generated = (out / "main.py").read_text("utf-8")
     (out / "main.py").write_text("# my own main\n", "utf-8")
-    assert win.generate_to(out)
-    assert (out / "main.py").read_text("utf-8") == "# my own main\n"
-    assert (out / "main.example.py").is_file()
-    assert "main.example.py" in win.last_result.info.text()
+    assert win.generate_to(parent)  # the same folder again: files are replaced
+    assert (out / "main.py").read_text("utf-8") == generated
+    assert not (out / "main.example.py").exists()
 
 
 def test_generation_stops_on_project_errors(

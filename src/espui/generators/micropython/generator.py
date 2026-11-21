@@ -70,6 +70,7 @@ SYNC_FILE_TYPES = ("py", "json", "bin")
 """What a generated project needs uploaded; "bin" = pictures."""
 MAIN_FILE = "main.py"
 MAIN_EXAMPLE_FILE = "main.example.py"
+"""Written by older versions next to an edited main.py; removed on generation."""
 """Where the new example goes when the developer changed main.py."""
 MANIFEST = ".espui-generated.json"
 """Hashes of the files the last generation wrote (to recognise an edited main.py)."""
@@ -106,32 +107,32 @@ class Generation:
         return self.pages[0] if self.pages else ""
 
     def write(self, out_dir: str | Path) -> list[Path]:
-        """Write the files; pictures left from a previous generation are removed.
+        """Write the files; whatever an earlier generation left there is replaced.
 
-        An existing ``.vscode/settings.json`` is merged, not replaced. ``main.py``
-        is the developer's once they edit it: if it differs from what the last
-        generation wrote (see :data:`MANIFEST`), the new example goes to
-        ``main.example.py`` and ``main.py`` is left alone.
+        Every file (``main.py`` too) is overwritten with the new version; files
+        of the previous generation that this one no longer produces (a deleted
+        page's ``ui_<page>.py``, old pictures, ``main.example.py`` of older
+        versions) are removed, see :data:`MANIFEST`. Files the generator never
+        wrote are left alone. An existing ``.vscode/settings.json`` is merged.
         """
         target = Path(out_dir)
         target.mkdir(parents=True, exist_ok=True)
-        _remove_stale_images(target, {target / name for name in self.files})
-        previous = _read_manifest(target)
+        keep = {target / name for name in self.files}
+        _remove_stale_images(target, keep)
+        for name in [*_read_manifest(target), MAIN_EXAMPLE_FILE]:
+            old = target / name
+            if old not in keep and old.is_file() and old.resolve().is_relative_to(target.resolve()):
+                old.unlink()
         written = []
         hashes = {}
         for name, data in self.files.items():
             path = target / name
-            if name == MAIN_FILE and main_was_edited(path, previous.get(MAIN_FILE)):
-                path = target / MAIN_EXAMPLE_FILE
             path.parent.mkdir(parents=True, exist_ok=True)
             if name == VSCODE_SETTINGS and path.is_file():
                 data = vscode_settings(path.read_text("utf-8")).encode("utf-8")
             path.write_bytes(data)
             written.append(path)
-            if path.name != MAIN_EXAMPLE_FILE:
-                hashes[name] = _sha256(data)
-        if MAIN_FILE not in hashes and MAIN_FILE in previous:
-            hashes[MAIN_FILE] = previous[MAIN_FILE]  # still the developer's version
+            hashes[name] = _sha256(data)
         (target / MANIFEST).write_text(json.dumps(hashes, indent=2, sort_keys=True) + "\n", "utf-8")
         return written
 
@@ -146,13 +147,6 @@ def _read_manifest(target: Path) -> dict[str, str]:
     except (OSError, ValueError):
         return {}
     return {str(k): str(v) for k, v in data.items()} if isinstance(data, dict) else {}
-
-
-def main_was_edited(path: Path, generated_hash: str | None) -> bool:
-    """``main.py`` exists and isn't what the generator wrote last time."""
-    if not path.is_file():
-        return False
-    return generated_hash is None or _sha256(path.read_bytes()) != generated_hash
 
 
 def _remove_stale_images(target: Path, keep: set[Path]) -> None:
@@ -301,8 +295,15 @@ def vscode_settings(existing: str | None = None) -> str:
 
 
 def spi_id(chip: Chip) -> int:
-    """Hardware SPI host for the display: ESP32-C3 has only one general-purpose SPI."""
-    return 1 if chip is Chip.ESP32C3 else 2
+    """MicroPython hardware SPI id for the display.
+
+    ``SPI(1)`` is SPI2_HOST and ``SPI(2)`` is SPI3_HOST. On the classic ESP32
+    the default pins (18/23) are SPI3's IOMUX pins; on ESP32-S3 the default
+    pins (12/11/10) are SPI2's (FSPI) IOMUX pins, and ``SPI(2)`` there resets
+    the board by watchdog with octal PSRAM (MicroPython 1.29). ESP32-C3 has
+    only SPI2.
+    """
+    return 2 if chip is Chip.ESP32 else 1
 
 
 def render_display_settings(project: Project) -> str:
@@ -322,6 +323,9 @@ def render_display_settings(project: Project) -> str:
             f"HEIGHT = {profile.height}",
             f"ROTATION = {display.rotation}  # 0-3",
             f"INVERT = {profile.invert}",
+            f"BUF_BYTES = {display.buf_bytes:_}  # region buffer: one strip of what is redrawn",
+            f"IMAGE_CACHE = {display.image_cache:_}"
+            "  # RAM for keeping pictures (0 = read from flash each time)",
         ]
     )
     template = runtime_file(get_driver(display.driver).files[0]).read_text("utf-8")
