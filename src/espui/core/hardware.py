@@ -33,13 +33,16 @@ class ChipPinRules:
     """GPIO -> why it cannot be used (Ukrainian, shown to the user)."""
     input_only: frozenset[int] = field(default_factory=frozenset)
 
-    def problem(self, gpio: int) -> str | None:
-        """Ukrainian description of why ``gpio`` can't drive a display pin, or None."""
+    def problem(self, gpio: int, input_only_ok: bool = False) -> str | None:
+        """Ukrainian description of why ``gpio`` can't drive a display pin, or None.
+
+        ``input_only_ok``: the pin is only read (MISO, an IRQ), input-only GPIOs suit it.
+        """
         if not 0 <= gpio <= self.max_gpio:
             return f"на {self.label} GPIO від 0 до {self.max_gpio}"
         if gpio in self.reserved:
             return f"GPIO{gpio} зайнятий ({self.reserved[gpio]})"
-        if gpio in self.input_only:
+        if gpio in self.input_only and not input_only_ok:
             return f"GPIO{gpio} на {self.label} працює лише на вхід"
         return None
 
@@ -83,5 +86,18 @@ DRIVER_CHIPS: Mapping[Driver, frozenset[Chip]] = MappingProxyType(
 )
 
 
+DRIVER_CONTROLLERS: Mapping[Driver, frozenset[str]] = MappingProxyType(
+    {
+        Driver.BUILTIN: frozenset({"ST7789", "ILI9488", "ILI9341", "GC9A01"}),
+        Driver.ST7789PY: frozenset({"ST7789"}),
+    }
+)
+"""Display controllers each driver can drive (generators.micropython.drivers agrees)."""
+
+
 def driver_supports(driver: Driver, chip: Chip) -> bool:
     return chip in DRIVER_CHIPS[driver]
+
+
+def driver_drives(driver: Driver, controller: str) -> bool:
+    return controller in DRIVER_CONTROLLERS[driver]

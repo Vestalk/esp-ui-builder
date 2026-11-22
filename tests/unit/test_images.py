@@ -269,7 +269,7 @@ def test_large_animation_warns(tmp_path: Path) -> None:
     assert warning.startswith("Анімація img/fire/: 4 кадрів 320×240 ≈ 600,0 КБ флешу")
 
 
-def test_rotated_image_warns(tmp_path: Path) -> None:
+def test_rotated_image_is_turned_on_the_board(tmp_path: Path) -> None:
     project = images_project(
         [
             {
@@ -284,10 +284,11 @@ def test_rotated_image_warns(tmp_path: Path) -> None:
         tmp_path,
     )
     result = generate(project)
-    assert result.warnings == (
-        "Елемент «a»: поворот картинок не підтримується, її намальовано без повороту.",
-    )
-    assert "_d.rot(" not in result.files["ui_main.py"].decode()
+    assert result.warnings == ()
+    code = result.files["ui_main.py"].decode()
+    assert "r = _d.rot(30.0, 16 - ox, 16 - oy)" in code  # around the centre of the box
+    assert '"/img/sun.bin",\n            r,' in code or '"/img/sun.bin", r)' in code
+    assert "return _d.rbox(0, 0, 32, 32, 30.0, 16, 16)" in code  # redraw area: turned box
 
 
 def test_write_removes_stale_pictures_and_merges_settings(tmp_path: Path) -> None:

@@ -453,7 +453,17 @@ def test_duplicate_pins_and_missing_backlight() -> None:
 def test_display_checks(monkeypatch: pytest.MonkeyPatch) -> None:
     assert check(display={"spi_hz": 80_000_000}) == []
     issues = check(display={"model": "ILI9341"})
-    assert issues == ["display.model: невідомий дисплей «ILI9341»; підтримуються: GMT020-02-8B"]
+    assert issues == [
+        "display.model: невідомий дисплей «ILI9341»; "
+        "підтримуються: GC9A01-1.28, GMT020-02-8B, ILI9488-3.5"
+    ]
+    assert check(display={"model": "ILI9488-3.5"}) == []
+    assert check(display={"model": "custom", "custom": {"controller": "GC9A01"}}) == [
+        "display.custom: 240×320 зі зсувом 0/0 не вміщується в пам'ять GC9A01 (240×240)"
+    ]
+    assert check(display={"model": "GC9A01-1.28", "driver": "st7789py"}) == [
+        "display.driver: драйвер «st7789py» не працює з контролером GC9A01"
+    ]
 
     import espui.core.checks as checks
 

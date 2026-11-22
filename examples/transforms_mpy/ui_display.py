@@ -12,15 +12,24 @@
 
 # --- settings ---------------------------------------------------------------
 DRIVER = "builtin"  # "builtin" | "st7789py"
-PINS = {"sck": 12, "mosi": 11, "cs": 10, "dc": 9, "rst": 8, "blk": 7}  # blk: None if absent
+PINS = {"sck": 12, "mosi": 11, "cs": 10, "dc": 9, "rst": 8, "blk": 7, "miso": None}  # None: the module has no such pin
 SPI_ID = 1  # ESP32-S3
 SPI_HZ = 40_000_000
 WIDTH = 240  # physical panel size, portrait
 HEIGHT = 320
 ROTATION = 1  # 0-3
 INVERT = True
+CONTROLLER = "ST7789"  # 2.0" TFT SPI GMT020-02-8B ver 1.21
+ROTATIONS = (  # (MADCTL, width, height, x offset, y offset) per rotation
+    (0x00, 240, 320, 0, 0),
+    (0x60, 320, 240, 0, 0),
+    (0xc0, 240, 320, 0, 0),
+    (0xa0, 320, 240, 0, 0),
+)
 BUF_BYTES = 16_384  # region buffer: one strip of what is redrawn
 IMAGE_CACHE = 0  # RAM for keeping pictures (0 = read from flash each time)
+TOUCH = None  # touch panel (ui_touch.py), None = none
+SD = None  # microSD card (ui_sd.py), None = none
 # -----------------------------------------------------------------------------
 
 _CONTROL_PINS = ("cs", "dc", "rst", "blk")
@@ -42,6 +51,7 @@ class Display:
         self.backlight = backlight
         self.buf_bytes = BUF_BYTES  # read by ui_draw.Page
         self.image_cache = IMAGE_CACHE
+        self.spi = None  # the bus, set by create(): the touch panel and SD card share it
 
 
 def check_area(x, y, w, h, width, height):
@@ -50,24 +60,40 @@ def check_area(x, y, w, h, width, height):
 
 
 # --- adapters: one function per driver key ------------------------------------
-def _open_builtin(spi, pins, width, height, rotation, invert):
-    import ui_st7789
+def _open_builtin(spi, pins, width, height, rotation, invert, controller="ST7789", rotations=None):
+    if controller == "ST7789":
+        import ui_st7789
 
-    drv = ui_st7789.ST7789(
-        spi,
-        width,
-        height,
-        dc=pins["dc"],
-        cs=pins.get("cs"),
-        reset=pins.get("rst"),
-        backlight=pins.get("blk"),
-        rotation=rotation,
-        invert=invert,
-    )
+        drv = ui_st7789.ST7789(
+            spi,
+            width,
+            height,
+            dc=pins["dc"],
+            cs=pins.get("cs"),
+            reset=pins.get("rst"),
+            backlight=pins.get("blk"),
+            rotation=rotation,
+            invert=invert,
+            rotations=rotations,
+        )
+    else:  # ILI9488 / ILI9341 / GC9A01: the generic driver
+        import ui_tft
+
+        drv = ui_tft.TFT(
+            spi,
+            controller,
+            dc=pins["dc"],
+            cs=pins.get("cs"),
+            reset=pins.get("rst"),
+            backlight=pins.get("blk"),
+            rotation=rotation,
+            invert=invert,
+            rotations=rotations,
+        )
     return Display("builtin", drv.width, drv.height, drv.blit, drv.fill_rect, drv.backlight)
 
 
-def _open_st7789py(spi, pins, width, height, rotation, invert):
+def _open_st7789py(spi, pins, width, height, rotation, invert, controller="ST7789", rotations=None):
     import st7789py
 
     blk = pins.get("blk")
@@ -111,35 +137,90 @@ ADAPTERS = {
 }
 
 
-def open_display(driver, spi, pins, width=WIDTH, height=HEIGHT, rotation=ROTATION, invert=INVERT):
+def open_display(
+    driver,
+    spi,
+    pins,
+    width=WIDTH,
+    height=HEIGHT,
+    rotation=ROTATION,
+    invert=INVERT,
+    controller=CONTROLLER,
+    rotations=ROTATIONS,
+):
     """Wrap an already configured SPI bus and Pin objects into a Display."""
     try:
         adapter = ADAPTERS[driver]
     except KeyError:
         raise ValueError("unknown display driver %r" % (driver,)) from None
-    return adapter(spi, pins, width, height, rotation, invert)
+    return adapter(spi, pins, width, height, rotation, invert, controller, rotations)
+
+
+def spi_mode(pins=PINS):
+    """(polarity, phase): a module without CS (its CS tied low) wants SPI mode 3."""
+    return (0, 0) if pins.get("cs") is not None else (1, 1)
 
 
 def make_bus(pins=PINS, spi_id=SPI_ID, spi_hz=SPI_HZ):
     """Create machine.SPI and output Pins from pin numbers. Returns (spi, pins)."""
     import machine
 
+    polarity, phase = spi_mode(pins)
+    extra = {}
+    if pins.get("miso") is not None:  # touch panel / SD card answer on it
+        extra["miso"] = machine.Pin(pins["miso"])
     spi = machine.SPI(
         spi_id,
         baudrate=spi_hz,
-        polarity=0,
-        phase=0,
+        polarity=polarity,
+        phase=phase,
         sck=machine.Pin(pins["sck"]),
         mosi=machine.Pin(pins["mosi"]),
+        **extra,
     )
     out = {}
     for name in _CONTROL_PINS:
         number = pins.get(name)
         out[name] = None if number is None else machine.Pin(number, machine.Pin.OUT, value=1)
+    # CS lines of the other devices on the bus stay high (deselected) from the start.
+    for number in (_extra_cs(TOUCH), _extra_cs(SD)):
+        if number is not None:
+            machine.Pin(number, machine.Pin.OUT, value=1)
     return spi, out
 
 
+def _extra_cs(device):
+    if device is None or (device.get("kind", "spi") not in ("spi", "xpt2046")):
+        return None
+    return device.get("cs")
+
+
 def create(driver=DRIVER):
-    """Initialise the configured driver and return a Display."""
+    """Initialise the configured driver and return a Display (``display.spi``: its bus)."""
     spi, pins = make_bus()
-    return open_display(driver, spi, pins)
+    display = open_display(driver, spi, pins)
+    display.spi = spi
+    return display
+
+
+def create_touch(display, settings=None):
+    """The touch panel of the module (ui_touch), or None if the display has none.
+
+    ``touch.read()`` gives (x, y) in screen coordinates of the current rotation, or None.
+    """
+    settings = TOUCH if settings is None else settings
+    if not settings:
+        return None
+    import ui_touch
+
+    return ui_touch.open_touch(settings, display, getattr(display, "spi", None), SPI_HZ, ROTATION)
+
+
+def mount_sd(display, settings=None):
+    """Mount the module's microSD card (ui_sd) at SD["mount"]; returns the path, or None."""
+    settings = SD if settings is None else settings
+    if not settings:
+        return None
+    import ui_sd
+
+    return ui_sd.mount(display.spi, settings, SPI_HZ)

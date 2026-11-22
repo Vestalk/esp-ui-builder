@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from tests.runtime.contract import DisplayRuntimeContract
+from tests.runtime.contract import DisplayRuntimeContract, TftRuntimeContract
 from tests.runtime.harness import MicroPythonBackend
 
 
@@ -20,3 +20,12 @@ class TestDisplayRuntimeMicroPython(DisplayRuntimeContract):
 
     def test_uses_real_framebuf(self, backend: MicroPythonBackend) -> None:
         assert backend.run("blit", "builtin", 0, 0, 4, 4, 0x00F8)["real_framebuf"] is True
+
+
+class TestTftRuntimeMicroPython(TftRuntimeContract):
+    @pytest.fixture(scope="class")
+    @classmethod
+    def backend(
+        cls, micropython: Path, tmp_path_factory: pytest.TempPathFactory
+    ) -> MicroPythonBackend:
+        return MicroPythonBackend(micropython, tmp_path_factory.mktemp("mpy-tft"))

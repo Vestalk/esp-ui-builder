@@ -212,6 +212,70 @@
       "title": "Condition",
       "type": "object"
     },
+    "CustomPanel": {
+      "additionalProperties": true,
+      "description": "A panel described by hand (``Display.model == \"custom\"``).",
+      "properties": {
+        "controller": {
+          "default": "ST7789",
+          "enum": [
+            "ST7789",
+            "ILI9488",
+            "ILI9341",
+            "GC9A01"
+          ],
+          "title": "Controller",
+          "type": "string"
+        },
+        "width": {
+          "default": 240,
+          "maximum": 800,
+          "minimum": 16,
+          "title": "Width",
+          "type": "integer"
+        },
+        "height": {
+          "default": 320,
+          "maximum": 800,
+          "minimum": 16,
+          "title": "Height",
+          "type": "integer"
+        },
+        "x_offset": {
+          "default": 0,
+          "maximum": 400,
+          "minimum": 0,
+          "title": "X Offset",
+          "type": "integer"
+        },
+        "y_offset": {
+          "default": 0,
+          "maximum": 400,
+          "minimum": 0,
+          "title": "Y Offset",
+          "type": "integer"
+        },
+        "bgr": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Bgr"
+        },
+        "round": {
+          "default": false,
+          "title": "Round",
+          "type": "boolean"
+        }
+      },
+      "title": "CustomPanel",
+      "type": "object"
+    },
     "Display": {
       "additionalProperties": true,
       "properties": {
@@ -258,6 +322,51 @@
           "minimum": 0,
           "title": "Image Cache",
           "type": "integer"
+        },
+        "custom": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CustomPanel"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "touch": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Touch"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "sd": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/SdCard"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null
+        },
+        "invert": {
+          "anyOf": [
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Invert"
         }
       },
       "title": "Display",
@@ -656,14 +765,30 @@
           "type": "integer"
         },
         "cs": {
-          "minimum": 0,
-          "title": "Cs",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cs"
         },
         "rst": {
-          "minimum": 0,
-          "title": "Rst",
-          "type": "integer"
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rst"
         },
         "bl": {
           "anyOf": [
@@ -677,14 +802,25 @@
           ],
           "default": null,
           "title": "Bl"
+        },
+        "miso": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Miso"
         }
       },
       "required": [
         "sck",
         "mosi",
-        "dc",
-        "cs",
-        "rst"
+        "dc"
       ],
       "title": "Pins",
       "type": "object"
@@ -707,6 +843,35 @@
         "y"
       ],
       "title": "PivotPoint",
+      "type": "object"
+    },
+    "SdCard": {
+      "additionalProperties": true,
+      "description": "A microSD slot on the display module, on the display's SPI bus (needs MISO).",
+      "properties": {
+        "cs": {
+          "minimum": 0,
+          "title": "Cs",
+          "type": "integer"
+        },
+        "mount": {
+          "default": "/sd",
+          "pattern": "^/[A-Za-z0-9_]{1,16}$",
+          "title": "Mount",
+          "type": "string"
+        },
+        "spi_hz": {
+          "default": 20000000,
+          "maximum": 40000000,
+          "minimum": 400000,
+          "title": "Spi Hz",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "cs"
+      ],
+      "title": "SdCard",
       "type": "object"
     },
     "SeriesParameter": {
@@ -834,6 +999,121 @@
         "name"
       ],
       "title": "StrParameter",
+      "type": "object"
+    },
+    "Touch": {
+      "additionalProperties": true,
+      "description": "A touch panel on the display module (off unless ``Display.touch`` is set).\n\n* ``xpt2046`` — resistive, on the display's SPI bus (its own CS; needs MISO);\n* ``cst816s`` — capacitive, on I2C (round GC9A01 touch modules).",
+      "properties": {
+        "kind": {
+          "default": "xpt2046",
+          "enum": [
+            "xpt2046",
+            "cst816s"
+          ],
+          "title": "Kind",
+          "type": "string"
+        },
+        "cs": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Cs"
+        },
+        "irq": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Irq"
+        },
+        "sda": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Sda"
+        },
+        "scl": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Scl"
+        },
+        "rst": {
+          "anyOf": [
+            {
+              "minimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Rst"
+        },
+        "x_min": {
+          "default": 200,
+          "maximum": 4095,
+          "minimum": 0,
+          "title": "X Min",
+          "type": "integer"
+        },
+        "x_max": {
+          "default": 3900,
+          "maximum": 4095,
+          "minimum": 0,
+          "title": "X Max",
+          "type": "integer"
+        },
+        "y_min": {
+          "default": 200,
+          "maximum": 4095,
+          "minimum": 0,
+          "title": "Y Min",
+          "type": "integer"
+        },
+        "y_max": {
+          "default": 3900,
+          "maximum": 4095,
+          "minimum": 0,
+          "title": "Y Max",
+          "type": "integer"
+        },
+        "swap_xy": {
+          "default": false,
+          "title": "Swap Xy",
+          "type": "boolean"
+        }
+      },
+      "title": "Touch",
       "type": "object"
     },
     "Widget": {
@@ -1015,6 +1295,21 @@
             }
           ],
           "default": null
+        },
+        "show_value": {
+          "default": true,
+          "title": "Show Value",
+          "type": "boolean"
+        },
+        "track_color": {
+          "default": "#23343f",
+          "title": "Track Color",
+          "type": "string"
+        },
+        "show_track": {
+          "default": true,
+          "title": "Show Track",
+          "type": "boolean"
         }
       },
       "required": [

@@ -12,7 +12,14 @@ from typing import Any
 import pytest
 
 from espui.core import serializer
-from espui.core.models import Page, ParamValue, Project, SeriesPoint
+from espui.core.models import (
+    IntParameter,
+    MappingRule,
+    Page,
+    ParamValue,
+    Project,
+    SeriesPoint,
+)
 from espui.generators.micropython.drivers import RUNTIME_DIR
 from espui.generators.micropython.generator import bounds, generate
 from tests.mpy.conftest import RunMpy
@@ -755,6 +762,222 @@ out("small", len(small._buf))
     (got,) = run.all("frame")
     compare(page, got, render_page(page, pictures.display.size, images=pictures.images),
             tmp_path, "whole-screen")  # fmt: skip
+
+
+def test_page_folder_works_as_a_package(run_mpy: RunMpy, tmp_path: Path, pictures: Project) -> None:
+    """Generated into ui/main: `from ui.main import ...` finds the modules and the pictures."""
+    generate(pictures).write(tmp_path / "ui" / "main")
+    width, height = pictures.display.size
+    source = f"""
+import binascii, json
+from ui.main import ui_draw, ui_main
+
+class FakeDisplay:
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
+        self.frame = bytearray(width * height * 2)
+
+    def blit(self, buf, x, y, w, h):
+        row = 2 * w
+        for r in range(h):
+            o = ((y + r) * self.width + x) * 2
+            self.frame[o:o + row] = buf[r * row:(r + 1) * row]
+
+d = FakeDisplay({width}, {height})
+ui = ui_main.UI(d)
+ui.draw(dict(ui_main.DEFAULTS))
+print("root " + json.dumps(ui_draw.ROOT))
+print("frame " + binascii.hexlify(d.frame).decode())
+"""
+    proc = run_mpy(source)
+    assert proc.returncode == 0, proc.stderr
+    run = Run(proc.stdout, width, height)
+    (root,) = run.all("root")
+    assert root == str(tmp_path / "ui" / "main")
+    (frame,) = run.all("frame")
+    page = pictures.pages[0]
+    expected = render_page(page, pictures.display.size, images=pictures.images)
+    compare(page, frame, expected, tmp_path, "package")  # pictures found, not grey boxes
+
+
+def turned_picture(
+    pictures: Project, rules: list[dict[str, Any]], angle: float, opacity: int = 100
+) -> Project:
+    """The images example with only its first static picture, turned."""
+    page = pictures.pages[0]
+    widget = next(w for w in page.widgets if w.type == "image" and not w.bind)
+    turned = widget.model_copy(
+        update={
+            "rotation_deg": angle,
+            "opacity": opacity,
+            "rules": [MappingRule.model_validate(r) for r in rules],
+            "x": 100,
+            "y": 60,
+        }
+    )
+    return pictures.model_copy(update={"pages": [page.model_copy(update={"widgets": [turned]})]})
+
+
+@pytest.mark.parametrize("angle", [30.0, 90.0, 200.0])
+@pytest.mark.parametrize("opacity", [100, 50])
+def test_turned_picture_matches_the_preview(
+    run_mpy: RunMpy, tmp_path: Path, pictures: Project, angle: float, opacity: int
+) -> None:
+    project = turned_picture(pictures, [], angle, opacity)
+    run = run_page(run_mpy, tmp_path, project, "ui.draw(p)\nframe(d)\n", buf=4096)  # strips
+    (frame,) = run.all("frame")
+    page = project.pages[0]
+    expected = render_page(page, project.display.size, images=project.images)
+    assert frame.mismatch(expected) <= 0.002, frame.save_png(tmp_path / "device.png")
+    straight = render_page(
+        page.model_copy(
+            update={"widgets": [page.widgets[0].model_copy(update={"rotation_deg": 0})]}
+        ),
+        project.display.size,
+        images=project.images,
+    )
+    assert expected.mismatch(straight) > 0.005  # it really is turned
+
+
+def test_picture_turned_by_a_parameter(run_mpy: RunMpy, tmp_path: Path, pictures: Project) -> None:
+    rules = [{"param": "weather_icon_angle", "prop": "angle", "at_min": 0, "at_max": 180}]
+    page = pictures.pages[0]
+    page = page.model_copy(
+        update={
+            "parameters": [
+                *page.parameters,
+                IntParameter(name="weather_icon_angle", min=0, max=100, default=0),
+            ]
+        }
+    )
+    project = turned_picture(pictures.model_copy(update={"pages": [page]}), rules, 0)
+    body = "ui.draw(p)\n" + "".join(
+        f"p['weather_icon_angle'] = {v}\nui.update(p)\nframe(d)\n" for v in (0, 25, 70, 100)
+    )
+    run = run_page(run_mpy, tmp_path, project, body)
+    page = project.pages[0]
+    for v, got in zip((0, 25, 70, 100), run.all("frame"), strict=True):
+        expected = render_page(
+            page, project.display.size, {"weather_icon_angle": v}, images=project.images
+        )
+        assert got.mismatch(expected) <= 0.002, v
+
+
+BOARD_SCRIPT = """
+import ui_display, {module}
+
+class Pin:
+    def __init__(self):
+        self.v = 1
+    def value(self, v=None):
+        if v is None:
+            return self.v
+        self.v = v
+
+class SPI:
+    def __init__(self, dc):
+        self.dc = dc
+        self.data = 0
+        self.first = None
+    def write(self, b):
+        if self.dc.v and len(b) > 4:  # pixels (4 bytes: window coordinates)
+            self.data += len(b)
+            if self.first is None and len(b) > 4:
+                self.first = bytes(b[:3])
+
+pins = {{"dc": Pin(), "cs": Pin(), "rst": Pin(), "blk": Pin()}}
+spi = SPI(pins["dc"])
+d = ui_display.open_display(ui_display.DRIVER, spi, pins)
+print("size", d.width, d.height, ui_display.CONTROLLER)
+cleared = spi.data
+ui = {module}.UI(d)
+ui.draw(dict({module}.DEFAULTS))
+print("bytes", cleared, spi.data - cleared)
+"""
+
+
+@pytest.mark.parametrize(
+    ("display", "size", "bpp"),
+    [
+        ({"model": "ILI9488-3.5", "rotation": 1}, (480, 320), 3),
+        ({"model": "GC9A01-1.28"}, (240, 240), 2),
+    ],
+)
+def test_generated_page_drives_other_panels(
+    run_mpy: RunMpy, tmp_path: Path, display: dict[str, Any], size: tuple[int, int], bpp: int
+) -> None:
+    """Through the generated ui_display.py, as on the board: init, clear and a full draw."""
+    project = serializer.from_dict(
+        {
+            "display": display,
+            "pages": [
+                {
+                    "name": "main",
+                    "background": "#102030",
+                    "widgets": [{"id": "r", "type": "rect", "x": 10, "y": 10, "w": 40, "h": 20}],
+                }
+            ],
+        }
+    )
+    result = generate(project)
+    assert "ui_tft.py" in result.files
+    assert "ui_st7789.py" not in result.files
+    result.write(tmp_path)
+    proc = run_mpy(BOARD_SCRIPT.format(module="ui_main"))
+    assert proc.returncode == 0, proc.stderr
+    lines = dict(line.split(" ", 1) for line in proc.stdout.splitlines())
+    w, h = size
+    assert lines["size"].split()[:2] == [str(w), str(h)]
+    cleared, drawn = (int(v) for v in lines["bytes"].split())
+    assert cleared >= w * h * bpp  # the start-up clear covers the whole panel
+    assert drawn == w * h * bpp  # draw(): every pixel once, in the panel's format
+
+
+@pytest.mark.parametrize("kind", ["bar", "arc"])
+@pytest.mark.parametrize(
+    "options",
+    [
+        {},
+        {"show_value": False},
+        {"track_color": "#ff0000"},
+        {"show_track": False, "show_value": False},
+    ],
+)
+def test_scale_number_and_track(
+    run_mpy: RunMpy, tmp_path: Path, kind: str, options: dict[str, Any]
+) -> None:
+    """Bars and arcs: number on/off, track colour, track on/off — the board as the preview."""
+    widget = {"id": "s", "type": kind, "x": 20, "y": 30, "w": 200, "h": 90, "bind": "t",
+              "format": "Рівень", "color": "#5dcaa5", **options}  # fmt: skip
+    project = serializer.from_dict(
+        {
+            "display": {"rotation": 1},
+            "pages": [
+                {
+                    "name": "main",
+                    "parameters": [
+                        {"name": "t", "type": "int", "min": 0, "max": 100, "default": 40}
+                    ],
+                    "widgets": [widget],
+                }
+            ],
+        }
+    )
+    code = generate(project).files["ui_main.py"].decode()
+    assert ("track=None" in code) is (options.get("show_track") is False)
+    assert ("track=0x00F8" in code) is ("track_color" in options)
+    run = run_page(run_mpy, tmp_path, project, "ui.draw(p)\nframe(d)\n")
+    (frame,) = run.all("frame")
+    page = project.pages[0]
+    expected = render_page(page, project.display.size)
+    compare(page, frame, expected, tmp_path, f"{kind}-{len(options)}")
+    plain = render_page(
+        page.model_copy(update={"widgets": [page.widgets[0].model_copy(update={
+            "show_value": True, "show_track": True, "track_color": "#23343f"})]}),
+        project.display.size,
+    )  # fmt: skip
+    assert (expected.mismatch(plain) > 0) is bool(options)  # every option changes the picture
 
 
 def test_animations_tick_and_play_once(

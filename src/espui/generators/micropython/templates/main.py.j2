@@ -10,6 +10,12 @@ import {{ pg.module }}
 {% endfor %}
 
 d = ui_display.create()
+{% if touch %}
+touch = ui_display.create_touch(d)  # touch.read(): (x, y) or None
+{% endif %}
+{% if sd %}
+print("SD card:", ui_display.mount_sd(d))  # files: open("{{ sd }}/name.txt")
+{% endif %}
 pages = {
 {% for pg in pages %}
     {{ pg.page.name | py }}: ({{ pg.module }}.UI(d), dict({{ pg.module }}.DEFAULTS)),
@@ -33,6 +39,11 @@ order = list(pages)
 last = time.ticks_ms()
 while True:
     ui.tick()
+{% if touch %}
+    point = touch.read()
+    if point:
+        print("touch", point)
+{% endif %}
     if time.ticks_diff(time.ticks_ms(), last) >= 5000:
         last = time.ticks_ms()
         show(order[(order.index(current) + 1) % len(order)])
@@ -49,15 +60,31 @@ import time
 import ui_display
 import {{ module }}
 
+{% if touch or sd %}
+display = ui_display.create()
+ui = {{ module }}.UI(display)
+{% else %}
 ui = {{ module }}.UI(ui_display.create())
+{% endif %}
 p = dict({{ module }}.DEFAULTS)
 ui.draw(p)
+{% if touch %}
+touch = ui_display.create_touch(display)  # touch.read(): (x, y) or None
+{% endif %}
+{% if sd %}
+print("SD card:", ui_display.mount_sd(display))  # files: open("{{ sd }}/name.txt")
+{% endif %}
 
 {% if anims %}
 # Animations run from ui.tick() (non-blocking, ~every 10 ms); parameters change once a second.
 last = time.ticks_ms()
 while True:
     ui.tick()
+{% if touch %}
+    point = touch.read()
+    if point:
+        print("touch", point)
+{% endif %}
     if time.ticks_diff(time.ticks_ms(), last) >= 1000:
         last = time.ticks_ms()
         # Change p[...] here, then:
@@ -72,6 +99,11 @@ step = max(1, (HI - LO) // 50)
 step = (HI - LO) / 50
 {% endif %}
 while True:
+{% if touch %}
+    point = touch.read()
+    if point:
+        print("touch", point)
+{% endif %}
     value = p[{{ first_numeric.name | py }}] + step
     if value > HI or value < LO:
         step = -step
@@ -86,6 +118,11 @@ while True:
 name = {{ first_series.name | py }}
 x = len(p[name]) and max(list(m)[0] for m in p[name])
 while True:
+{% if touch %}
+    point = touch.read()
+    if point:
+        print("touch", point)
+{% endif %}
     x += 1
     p[name].append({x: random.uniform({{ first_series.min | py }}, {{ first_series.max | py }})})
     if len(p[name]) > {{ first_series.max_points }}:
@@ -96,6 +133,11 @@ while True:
     time.sleep_ms(500)
 {% else %}
 while True:
+{% if touch %}
+    point = touch.read()
+    if point:
+        print("touch", point)
+{% endif %}
     # Change p[...] here, then:
     ui.update(p)
     time.sleep_ms(200)

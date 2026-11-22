@@ -11,17 +11,20 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QMimeData, QSettings, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
+from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QResizeEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDockWidget,
     QFileDialog,
+    QFrame,
     QLabel,
     QListWidget,
     QListWidgetItem,
     QMainWindow,
     QMessageBox,
+    QScrollArea,
     QSizePolicy,
+    QTabBar,
     QToolButton,
     QVBoxLayout,
     QWidget,
@@ -73,11 +76,15 @@ class Palette(QListWidget):
     def __init__(self) -> None:
         super().__init__()
         self.setObjectName("palette")
+        # A narrow palette shortens long titles ("Смуга прог…") instead of scrolling sideways.
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setTextElideMode(Qt.TextElideMode.ElideRight)
         self.setDragEnabled(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
         for kind in WIDGET_TYPES:
             item = QListWidgetItem(WIDGET_TITLES[kind])
             item.setData(Qt.ItemDataRole.UserRole, kind)
+            item.setToolTip(WIDGET_TITLES[kind])
             item.setToolTip("Клік — у центр сторінки; перетягніть — у потрібне місце")
             self.addItem(item)
         self.itemClicked.connect(
@@ -148,11 +155,20 @@ class MainWindow(QMainWindow):
         for title, widget, area in docks:
             dock = QDockWidget(title, self)
             dock.setObjectName(f"dock_{title}")
-            dock.setWidget(widget)
+            content: QWidget = widget
+            if widget is self.parameters:  # scrolls on a short window instead of squeezing
+                scroll = QScrollArea()  # the properties above it
+                scroll.setWidgetResizable(True)
+                scroll.setFrameShape(QFrame.Shape.NoFrame)
+                scroll.setWidget(widget)
+                content = scroll
+            dock.setWidget(content)
             self.addDockWidget(area, dock)
             self.docks[title] = dock
         self.tabifyDockWidget(self.docks["Шари"], self.docks["Тестові значення"])
         self.docks["Шари"].raise_()
+        self._full_dock_tabs()
+        self.tabifiedDockWidgetActivated.connect(self._dock_tab_activated)
         self.resizeDocks(
             [self.docks["Елементи"], self.docks["Властивості"]],
             [150, 360],
@@ -166,6 +182,7 @@ class MainWindow(QMainWindow):
             Qt.Orientation.Vertical,
         )
         self.properties.setMinimumWidth(320)
+        self._narrow = False
 
     def _action(
         self, text: str, slot: object, shortcut: QKeySequence | str | None = None
@@ -267,9 +284,10 @@ class MainWindow(QMainWindow):
         self.display_button.clicked.connect(self.edit_display)
         self.display_button.setToolTip("Налаштування дисплея")
         tools.addWidget(self.display_button)
-        target = QLabel("  Ціль: MicroPython · MicroPico  ")
-        target.setObjectName("target")
-        tools.addWidget(target)
+        self.tools = tools
+        self.target_label = QLabel("  Ціль: MicroPython · MicroPico  ")
+        self.target_label.setObjectName("target")
+        self.target_action = tools.addWidget(self.target_label)
         tools.addSeparator()
         # Short buttons; the menu entries name the step ("Скасувати Додати сторінку…").
         stack = self.doc.undo_stack
@@ -301,6 +319,78 @@ class MainWindow(QMainWindow):
         generate_button = tools.widgetForAction(self.act_generate)
         if generate_button is not None:
             generate_button.setObjectName("generate")
+        self.compact_level = 0
+
+    # ------------------------------------------------------------------ adaptivity
+    # Toolbar texts per compact level (0 = full); menus keep the full names (iconText only).
+    COMPACT_LEVELS = 5
+
+    def _compact(self, level: int) -> None:
+        """Make the toolbar shorter step by step; "▶ Згенерувати" always stays visible."""
+        self.compact_level = level
+        self.target_action.setVisible(level < 1)
+        label = display_label(self.doc.project.display)
+        self.display_button.setText(f"Дисплей: {label}" if level < 2 else "Дисплей…")
+        self.display_button.setToolTip(f"Налаштування дисплея: {label}")
+        short = level >= 3
+        for action, full, brief in (
+            (self.act_zoom_out, "Зменшити", "−"),
+            (self.act_zoom_in, "Збільшити", "+"),
+            (self.act_fit, "Вмістити все", "Вмістити"),
+        ):
+            action.setIconText(brief if short else full)
+            action.setToolTip(full)
+        tiny = level >= 4
+        self.tool_undo.setIconText("↶" if tiny else "↶ Скасувати")
+        self.tool_redo.setIconText("↷" if tiny else "↷ Повторити")
+        self.act_generate.setIconText("▶ Згенерувати" if level < 5 else "▶")
+
+    def _fit_toolbar(self) -> None:
+        """The least compact level whose toolbar fits the window width."""
+        available = self.width()
+        for level in range(self.COMPACT_LEVELS + 1):
+            self._compact(level)
+            if self.tools.sizeHint().width() <= available:
+                return
+
+    def _full_dock_tabs(self) -> None:
+        """Tabs of panels docked together show their whole titles (Qt elides by default)."""
+        for bar in self.findChildren(QTabBar):
+            if bar.parent() is self and bar.elideMode() != Qt.TextElideMode.ElideNone:
+                bar.setElideMode(Qt.TextElideMode.ElideNone)
+                bar.setExpanding(False)
+
+    def _dock_tab_activated(self, _dock: QDockWidget) -> None:
+        self._full_dock_tabs()
+
+    NARROW_WINDOW = 1100
+    """Below this width the element palette gets narrower (the canvas needs the room)."""
+
+    def _fit_docks(self) -> None:
+        """Narrow the palette once when the window becomes narrow (and back), not on every
+        resize: a width the user dragged stays as it is."""
+        narrow = self.width() < self.NARROW_WINDOW
+        if narrow != self._narrow:
+            self._narrow = narrow
+            self.resizeDocks(
+                [self.docks["Елементи"]], [140 if narrow else 150], Qt.Orientation.Horizontal
+            )
+        # A shorter window takes the height from the right column without priorities: the
+        # properties of the selection must not end up as a thin strip under "Параметри".
+        props, params = self.docks["Властивості"], self.docks["Параметри"]
+        if props.isVisible() and params.isVisible() and not props.isFloating():
+            total = props.height() + params.height()
+            if total > 0 and props.height() < 0.45 * total:
+                self.resizeDocks(
+                    [props, params], [round(total * 0.65), round(total * 0.35)],
+                    Qt.Orientation.Vertical,
+                )  # fmt: skip
+
+    def resizeEvent(self, event: QResizeEvent) -> None:
+        super().resizeEvent(event)
+        self._fit_docks()
+        self._fit_toolbar()
+        self._full_dock_tabs()  # docks can be re-tabbed by the user: new tab bars
 
     # Bound methods, not lambdas: Qt disconnects them when the window is gone.
     def _undo_text(self, text: str) -> None:
@@ -349,7 +439,7 @@ class MainWindow(QMainWindow):
     def refresh(self) -> None:
         project = self.doc.project
         label = display_label(project.display)
-        self.display_button.setText(f"Дисплей: {label}")
+        self._fit_toolbar()  # the display label length changes the toolbar width
         width, height = project.display.size
         self.status_display.setText(f"{label} · {width}×{height}")
         self.memory_timer.start()  # the estimate follows a moment later

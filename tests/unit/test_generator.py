@@ -61,6 +61,7 @@ def test_files(weather: Project) -> None:
         "ui_main.py",
         "ui_fonts.py",
         "main.py",
+        "__init__.py",
     ]
     assert result.warnings == ()
     assert result.page == "main"
@@ -94,6 +95,7 @@ def test_runtime_files_are_copied_unchanged() -> None:
         "ui_main.py",
         "ui_other.py",
         "main.py",
+        "__init__.py",
     ]
     vendored = result.files["st7789py.py"]
     assert hashlib.sha256(vendored).hexdigest() == DRIVERS["st7789py"].sha256
@@ -362,9 +364,12 @@ def test_cli_generate_errors(tmp_path: Path, capsys: pytest.CaptureFixture[str])
 
 def test_cli_generate_warnings(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
     src = tmp_path / "p.espui"
-    serializer.save(project([{"id": "i", "type": "image", "rotation_deg": 10}]), src)
+    big_text = {"id": "t", "type": "text", "w": 200, "h": 60, "format": "Привіт",
+                "rules": [{"param": "t", "prop": "angle", "at_min": 0, "at_max": 90}]}  # fmt: skip
+    proj = project([big_text])  # "t": a float parameter of the helper
+    serializer.save(proj, src)
     assert main(["generate", str(src), "-o", str(tmp_path / "out")]) == 0
-    assert "Увага: Елемент «i»: поворот картинок не підтримується" in capsys.readouterr().err
+    assert "Увага: Елемент «t»: текст 200×60 з кутом від параметра" in capsys.readouterr().err
 
 
 # ------------------------------------------------------------------ conditions (stage 04)

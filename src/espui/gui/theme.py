@@ -144,11 +144,18 @@ QListWidget::item:hover {{ background: {t.soft}; }}
 QListWidget::item:selected {{ background: {t.soft}; color: {t.blue}; }}
 QListWidget#palette::item {{ padding: 6px 8px; }}
 QTabBar {{ background: {t.chrome}; }}
-QTabBar::tab {{ font-family: "{MONO_FAMILY}"; font-size: 12px; color: {t.mut}; background: transparent;
+QWidget#pages_bar QTabBar {{ font-family: "{MONO_FAMILY}"; font-size: 12px; }}
+QWidget#pages_bar QTabBar::tab {{ color: {t.mut}; background: transparent;
                 border: 1px solid transparent; border-bottom: 0; border-top-left-radius: 6px;
                 border-top-right-radius: 6px; min-height: 28px; padding: 0 6px 0 12px; margin-right: 2px; }}
-QTabBar::tab:hover {{ color: {t.ink}; }}
-QTabBar::tab:selected {{ background: {t.panel}; border-color: {t.line}; color: {t.ink}; }}
+QWidget#pages_bar QTabBar::tab:hover {{ color: {t.ink}; }}
+QWidget#pages_bar QTabBar::tab:selected {{ background: {t.panel}; border-color: {t.line}; color: {t.ink}; }}
+/* Tabs of docked panels (Шари · Тестові значення): the interface font, never cut short. */
+QMainWindow > QTabBar::tab {{ color: {t.mut}; background: transparent; border: 1px solid transparent;
+                border-top: 0; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px;
+                min-height: 26px; padding: 0 14px; margin-right: 2px; }}
+QMainWindow > QTabBar::tab:hover {{ color: {t.ink}; }}
+QMainWindow > QTabBar::tab:selected {{ background: {t.panel}; border-color: {t.line}; color: {t.ink}; }}
 QWidget#pages_bar {{ background: {t.chrome}; border-bottom: 1px solid {t.line}; }}
 QToolButton#add_page {{ border: 0; background: transparent; color: {t.blue}; font-weight: 600;
                         min-height: 28px; padding: 0 10px; }}

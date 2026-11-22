@@ -31,6 +31,7 @@ from PySide6.QtGui import (
     QKeyEvent,
     QMouseEvent,
     QPainter,
+    QPainterPath,
     QPen,
     QPixmap,
     QShowEvent,
@@ -279,6 +280,8 @@ class PageItem(QGraphicsItem):
         self.index = index
         self.name = page.name
         self.size = project.display.size
+        self.round = project.display.profile.shape == "round"
+        """A round panel: only the inscribed circle is visible on the board."""
         self.fingerprint = ""
         self.image = QImage()
         self.active = False
@@ -346,9 +349,23 @@ class PageItem(QGraphicsItem):
         color = t.color("blue") if self.active else QColor(SCREEN_OUTLINE)
         pen = QPen(color, 2 if self.active else 1)
         pen.setCosmetic(True)
-        painter.setPen(pen)
-        painter.setBrush(Qt.BrushStyle.NoBrush)
-        painter.drawRect(QRectF(0, 0, w, h))
+        if self.round:  # the corners are not on the panel: shade them, outline the circle
+            outside = QPainterPath()
+            outside.addRect(QRectF(0, 0, w, h))
+            circle = QPainterPath()
+            circle.addEllipse(QRectF(0, 0, w, h))
+            painter.fillPath(outside.subtracted(circle), QColor(110, 120, 135, 170))
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawEllipse(QRectF(0, 0, w, h))
+            faint = QPen(color, 1, Qt.PenStyle.DotLine)
+            faint.setCosmetic(True)
+            painter.setPen(faint)
+            painter.drawRect(QRectF(0, 0, w, h))
+        else:
+            painter.setPen(pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(QRectF(0, 0, w, h))
         painter.setPen(t.color("blue") if self.active else t.color("mut"))
         painter.setFont(theme.mono_font(12))
         painter.drawText(
@@ -422,8 +439,10 @@ class Workspace(QGraphicsView):
     def show_project(self, project: Project, current: int) -> None:
         """Keep the page items that still fit and re-render only changed pages."""
         scene = self.scene()
+        round_panel = project.display.profile.shape == "round"
         if len(self.items_) != len(project.pages) or (
-            self.items_ and self.items_[0].size != project.display.size
+            self.items_
+            and (self.items_[0].size != project.display.size or self.items_[0].round != round_panel)
         ):
             scene.clear()
             self.items_ = [PageItem(i, p, project) for i, p in enumerate(project.pages)]

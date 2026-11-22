@@ -361,7 +361,7 @@ def _draw(c: Canvas, widget: Widget, values: ParameterValues, e: Any) -> None:
         tx = x + {"left": 0, "center": (w - tw) // 2, "right": w - tw}[widget.align]
         _text(c, bf, text, tx, y + (h * 4) // 5, color, rot)
     elif e.type == "bar":
-        number = number_label(param, e.value) if param is not None else ""
+        number = number_label(param, e.value) if param is not None and widget.show_value else ""
         bf = bitmap_font(widget, (e.text or "") + number)
         f = e.fraction if e.fraction is not None else 0.5
         th = 14 if h >= 16 else h
@@ -372,17 +372,19 @@ def _draw(c: Canvas, widget: Widget, values: ParameterValues, e: Any) -> None:
         if number:
             number = bf.fit(number, w)
             _text(c, bf, number, x + w - bf.width(number), base, to_wire("#ffffff"), rot)
-        _rrect(c, x, ty, w, th, 3, to_wire("#23343f"), rot)
+        if widget.show_track:
+            _rrect(c, x, ty, w, th, 3, to_wire(widget.track_color), rot)
         _rrect(c, x, ty, fw, th, 3, color, rot)
     elif e.type == "chart":
         _chart(c, widget, values, e, color)
     elif e.type == "arc":
         f = e.fraction if e.fraction is not None else 0.6
         cx, cy, r = arc_geometry(x, y, w, h)
-        _ring(c, cx, cy, r, math.pi, to_wire("#23343f"), ARC_WIDTH, rot)
+        if widget.show_track:
+            _ring(c, cx, cy, r, math.pi, to_wire(widget.track_color), ARC_WIDTH, rot)
         if f > 0:
             _ring(c, cx, cy, r, math.pi * f, color, ARC_WIDTH, rot)
-        if e.text:
+        if e.text and widget.show_value:
             bf = bitmap_font(widget, e.text)
             s = bf.fit(e.text, w)
             _text(c, bf, s, cx - bf.width(s) // 2, cy - 4, to_wire("#ffffff"), rot)
@@ -517,9 +519,40 @@ def _missing(c: Canvas, x: int, y: int, w: int, h: int) -> None:
             c.set(xx, yy, border if edge else fill)
 
 
+ROT_ONE = 65536
+"""Fixed point of a turned picture: the same 16.16 terms as ui_draw.rotation_terms."""
+
+
+def rotation_terms(rot: tuple[float, float, float, float], x: int, y: int) -> tuple[int, ...]:
+    """(ku, kv, c, s): screen pixel (X, Y) shows picture pixel
+    (``(ku + X*c + Y*s) >> 16``, ``(kv - X*s + Y*c) >> 16``) — as on the board."""
+    c, s, px, py = rot
+    ku = px - x + (0.5 - px) * c + (0.5 - py) * s
+    kv = py - y - (0.5 - px) * s + (0.5 - py) * c
+    return tuple(math.floor(v * ROT_ONE + 0.5) for v in (ku, kv, c, s))
+
+
+def _image_rotated(c: Canvas, x: int, y: int, w: int, h: int, data: bytes, rot: Rot) -> None:
+    assert rot is not None
+    ku, kv, cu, su = rotation_terms(rot, x, y)
+    bx, by, bw, bh = scan_box(rot, x, y, w, h)
+    for yy in range(max(by, 0), min(by + bh, c.height)):
+        for xx in range(max(bx, 0), min(bx + bw, c.width)):
+            u = (ku + xx * cu + yy * su) >> 16
+            v = (kv - xx * su + yy * cu) >> 16
+            if 0 <= u < w and 0 <= v < h:
+                k = 2 * (v * w + u)
+                c.set(xx, yy, int.from_bytes(data[k : k + 2], "little"))
+
+
 def _image(c: Canvas, widget: Widget, e: EffectiveWidget, pictures: Pictures) -> None:
-    """The library picture fitted into the box (the board shows the converted file)."""
+    """The library picture fitted into the box (the board shows the converted file).
+
+    A turned picture is sampled like on the board: every screen pixel takes the
+    picture pixel under its centre turned back around the pivot.
+    """
     x, y, w, h = e.bounds
+    rot = make_rot(e.angle, e.pivot)
     settings = widget.image
     asset = None
     if widget.bind:
@@ -528,11 +561,17 @@ def _image(c: Canvas, widget: Widget, e: EffectiveWidget, pictures: Pictures) ->
     elif settings is not None and settings.file:
         asset = pictures.library.get(settings.file)
     if asset is None:
-        _missing(c, x, y, w, h)
+        if rot is None:
+            _missing(c, x, y, w, h)
+        else:  # a turned grey box (no border), as ui_draw.image
+            _rrect(c, x, y, w, h, 0, to_wire("#13252f"), rot)
         return
     frames = decode(asset)
     frame = frames[min(pictures.frames.get(widget.id, 0), len(frames) - 1)]
     fit = settings.fit if settings is not None else "contain"
     data = to_rgb565(render(frame, w, h, fit, pictures.background))
+    if rot is not None:
+        _image_rotated(c, x, y, w, h, data, rot)
+        return
     for i in range(w * h):
         c.set(x + i % w, y + i // w, int.from_bytes(data[2 * i : 2 * i + 2], "little"))

@@ -39,14 +39,27 @@ class DriverInfo:
     license_file: str | None = None
     sha256: str | None = None
     """Pinned hash of a vendored third-party file; it must be shipped unchanged."""
+    controllers: frozenset[str] = frozenset({"ST7789"})
+    """Display controllers it can drive."""
+    other_module_file: str | None = None
+    """Module for the controllers other than ST7789 (the built-in driver: ui_tft.py)."""
 
     @property
     def files(self) -> tuple[str, ...]:
-        """Runtime files copied into the generated project for this driver."""
+        """Runtime files copied into the generated project for an ST7789 panel."""
         return (ADAPTER_FILE, self.module_file)
+
+    def files_for(self, controller: str) -> tuple[str, ...]:
+        """Runtime files copied into the generated project for ``controller``."""
+        if controller != "ST7789" and self.other_module_file:
+            return (ADAPTER_FILE, self.other_module_file)
+        return self.files
 
     def supports(self, chip: Chip) -> bool:
         return chip in self.chips
+
+    def drives(self, controller: str) -> bool:
+        return controller in self.controllers
 
 
 DEFAULT_DRIVER = "builtin"
@@ -56,13 +69,18 @@ DRIVERS: Mapping[str, DriverInfo] = MappingProxyType(
     {
         "builtin": DriverInfo(
             key="builtin",
-            title="Вбудований ui_st7789",
+            title="Вбудований (ui_st7789 / ui_tft)",
             module_file="ui_st7789.py",
             chips=ALL_CHIPS,
             license="MIT",
             origin="ESP UI Builder",
             speed="висока: області пишуться одним блоком, заливка смугами по 4 КБ",
-            note="Рекомендований. Python + framebuf, стандартна прошивка.",
+            note=(
+                "Рекомендований. Python + framebuf, стандартна прошивка. "
+                "ST7789 — ui_st7789.py; ILI9488, ILI9341, GC9A01 — ui_tft.py."
+            ),
+            controllers=frozenset({"ST7789", "ILI9488", "ILI9341", "GC9A01"}),
+            other_module_file="ui_tft.py",
         ),
         "st7789py": DriverInfo(
             key="st7789py",

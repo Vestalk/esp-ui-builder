@@ -20,7 +20,7 @@ from espui.gui.main_window import MainWindow
 from espui.gui.pages_bar import CONFIRM_TEXT, PagesBar
 from espui.gui.workspace import ZOOM_MAX, ZOOM_MIN, Workspace, canvas_to_image
 from espui.preview.raster import Canvas
-from tests.gui.conftest import PAGES
+from tests.gui.conftest import PAGES, ROOT
 
 
 @pytest.fixture
@@ -107,7 +107,11 @@ def ok_enabled(dialog: DisplayDialog) -> bool:
 
 
 def test_dialog_defaults(dialog: DisplayDialog) -> None:
-    assert not dialog.model.isEnabled()  # one panel for now
+    models = [dialog.model.itemData(i) for i in range(dialog.model.count())]
+    assert models == ["GC9A01-1.28", "GMT020-02-8B", "ILI9488-3.5", "custom"]
+    assert dialog.model.currentData() == "GMT020-02-8B"
+    assert not dialog.custom_box.isVisibleTo(dialog)
+    assert dialog.invert.isChecked()  # the GMT020 profile inverts
     assert dialog.problems() == []
     assert ok_enabled(dialog)
     assert "ui_display.py, ui_st7789.py" in dialog.driver_card.text()
@@ -128,20 +132,93 @@ def test_dialog_lists_every_problem(dialog: DisplayDialog) -> None:
 
 
 def test_dialog_number_errors(dialog: DisplayDialog) -> None:
-    dialog.pins["rst"].setText("")
+    dialog.pins["sck"].setText("")
     dialog.pins["dc"].setText("abc")
     dialog.pins["cs"].setText("-3")
     assert dialog.problems() == [
-        "RES: вкажіть номер GPIO",
+        "SCL: вкажіть номер GPIO",
         "DC: «abc» — не число",
         "CS: номер GPIO не може бути від'ємним",
     ]
-    dialog.pins["rst"].setText("8")
+    dialog.pins["sck"].setText("12")
     dialog.pins["dc"].setText("9")
     dialog.pins["cs"].setText("10")
     dialog.pins["bl"].setText("")  # no BLK pin: allowed
     assert dialog.problems() == []
     assert dialog.display().pins.bl is None
+
+
+def test_dialog_module_without_cs_and_reset(dialog: DisplayDialog) -> None:
+    """7-pin modules: CS tied low on the board, no RES — both may stay empty."""
+    dialog.pins["cs"].setText("")
+    dialog.pins["rst"].setText("")
+    assert dialog.problems() == []
+    pins = dialog.display().pins
+    assert (pins.cs, pins.rst) == (None, None)
+
+
+def test_dialog_touch_and_sd_are_off_by_default(dialog: DisplayDialog) -> None:
+    display = dialog.display()
+    assert (display.touch, display.sd, display.pins.miso) == (None, None, None)
+    assert dialog.touch_kind.currentData() is None
+    assert not dialog.sd_enabled.isChecked()
+
+
+def test_dialog_miso_only_when_needed(dialog: DisplayDialog) -> None:
+    assert not dialog.pins["miso"].isVisibleTo(dialog)  # a plain display: no MISO
+    dialog.sd_enabled.setChecked(True)
+    assert dialog.pins["miso"].isVisibleTo(dialog)
+    assert dialog.pin_labels["miso"].isVisibleTo(dialog)
+    assert "сенсора XPT2046 і SD-карти" in dialog.pins["miso"].toolTip()
+    dialog.sd_enabled.setChecked(False)
+    assert not dialog.pins["miso"].isVisibleTo(dialog)
+    assert dialog.display().pins.miso is None  # hidden: not used
+    dialog.touch_kind.setCurrentIndex(dialog.touch_kind.findData("cst816s"))
+    assert not dialog.pins["miso"].isVisibleTo(dialog)  # I2C touch: no MISO either
+    dialog.touch_kind.setCurrentIndex(dialog.touch_kind.findData("xpt2046"))
+    assert dialog.pins["miso"].isVisibleTo(dialog)
+    assert dialog.display().pins.miso == 13
+
+
+def test_dialog_xpt2046_touch_and_sd_card(dialog: DisplayDialog) -> None:
+    dialog.touch_kind.setCurrentIndex(dialog.touch_kind.findData("xpt2046"))
+    dialog.sd_enabled.setChecked(True)
+    display = dialog.display()
+    assert display.touch is not None
+    assert (display.touch.kind, display.touch.cs, display.touch.irq) == ("xpt2046", 14, 15)
+    assert display.sd is not None
+    assert (display.sd.cs, display.sd.mount) == (21, "/sd")
+    assert display.pins.miso == 13  # suggested: touch and card answer on it
+    assert dialog.problems() == []
+    dialog.pins["miso"].setText("")
+    assert dialog.problems() == [
+        "MISO: вкажіть MISO: сенсор XPT2046 і SD-карта відповідають платі по ньому"
+    ]
+    dialog.pins["miso"].setText("13")
+    dialog.sd_cs.setText("14")  # the touch panel's T_CS
+    assert any("SD_CS: GPIO14 вже використано для touch_cs" in p for p in dialog.problems())
+
+
+def test_dialog_cst816s_touch(dialog: DisplayDialog) -> None:
+    dialog.touch_kind.setCurrentIndex(dialog.touch_kind.findData("cst816s"))
+    touch = dialog.display().touch
+    assert touch is not None
+    assert (touch.kind, touch.sda, touch.scl, touch.irq, touch.rst) == ("cst816s", 16, 17, 18, None)
+    assert dialog.display().pins.miso is None  # I2C: no MISO needed
+    assert dialog.problems() == []
+    dialog.touch_pins[("cst816s", "sda")].setText("")
+    assert dialog.problems() == ["Сенсор SDA: вкажіть SDA сенсора (I2C)"]
+
+
+def test_dialog_reopens_touch_and_sd(qtbot: QtBot) -> None:
+    display = Display(
+        pins={"sck": 12, "mosi": 11, "dc": 9, "cs": 10, "rst": 8, "bl": 7, "miso": 13},
+        touch={"kind": "xpt2046", "cs": 4, "x_min": 3800, "x_max": 300, "swap_xy": True},
+        sd={"cs": 5, "mount": "/card"},
+    )
+    dialog = DisplayDialog(display)
+    qtbot.addWidget(dialog)
+    assert dialog.display() == display
 
 
 def test_dialog_chip_rules(dialog: DisplayDialog) -> None:
@@ -170,6 +247,61 @@ def test_dialog_keeps_an_unusual_frequency(qtbot: QtBot) -> None:
     qtbot.addWidget(dialog)
     assert dialog.spi.currentText() == "26 МГц"
     assert dialog.display().spi_hz == 26_000_000
+
+
+def test_dialog_ili9488(dialog: DisplayDialog) -> None:
+    dialog.model.setCurrentIndex(dialog.model.findData("ILI9488-3.5"))
+    assert dialog.rotation.itemText(1) == "1 — альбом 480×320"
+    assert not dialog.invert.isChecked()  # this profile does not invert
+    dialog.rotation.setCurrentIndex(1)
+    display = dialog.display()
+    assert (display.model, display.size, display.invert) == ("ILI9488-3.5", (480, 320), None)
+    assert dialog.problems() == []
+    # st7789py can't drive an ILI9488: disabled, the built-in driver chosen
+    row = dialog.driver.findData("st7789py")
+    assert not dialog.driver.model().item(row).isEnabled()  # type: ignore[attr-defined]
+    assert dialog.display().driver.value == "builtin"
+
+
+def test_dialog_round_and_inversion_override(dialog: DisplayDialog) -> None:
+    dialog.model.setCurrentIndex(dialog.model.findData("GC9A01-1.28"))
+    assert dialog.rotation.itemText(0) == "0 — портрет 240×240"
+    assert dialog.display().profile.shape == "round"
+    dialog.invert.setChecked(False)  # the module shows a negative: switch inversion off
+    assert dialog.display().invert is False
+    assert dialog.display().inverted is False
+
+
+def test_dialog_custom_panel(dialog: DisplayDialog) -> None:
+    dialog.model.setCurrentIndex(dialog.model.findData("custom"))
+    assert dialog.custom_box.isVisibleTo(dialog)
+    dialog.controller.setCurrentIndex(dialog.controller.findData("ST7789"))
+    dialog.custom_w.setValue(135)
+    dialog.custom_h.setValue(240)
+    dialog.offset_x.setValue(52)
+    dialog.offset_y.setValue(40)
+    dialog.color_order.setCurrentIndex(dialog.color_order.findData(True))
+    assert dialog.rotation.itemText(1) == "1 — альбом 240×135"
+    display = dialog.display()
+    assert display.model == "custom"
+    assert display.custom is not None
+    assert (display.custom.width, display.custom.x_offset, display.custom.bgr) == (135, 52, True)
+    assert display.profile.rotation_table()[0] == (0x08, 135, 240, 52, 40)
+    assert dialog.problems() == []
+    dialog.custom_h.setValue(400)  # more than the ST7789 memory (240×320)
+    assert any("не вміщується в пам'ять ST7789" in p for p in dialog.problems())
+    assert not ok_enabled(dialog)
+
+
+def test_dialog_reopens_a_custom_panel(qtbot: QtBot) -> None:
+    custom = {"controller": "ILI9341", "width": 240, "height": 320, "round": True}
+    dialog = DisplayDialog(Display(model="custom", custom=custom, invert=True))
+    qtbot.addWidget(dialog)
+    assert dialog.model.currentData() == "custom"
+    assert dialog.controller.currentData() == "ILI9341"
+    assert dialog.round_panel.isChecked()
+    assert dialog.invert.isChecked()
+    assert dialog.display() == Display(model="custom", custom=custom, invert=True)
 
 
 def test_dialog_memory_presets(dialog: DisplayDialog) -> None:
@@ -353,3 +485,28 @@ def test_qt_texts_in_ukrainian(qtbot: QtBot) -> None:
     box = QDialogButtonBox(QDialogButtonBox.StandardButton.Close)
     qtbot.addWidget(box)
     assert box.button(QDialogButtonBox.StandardButton.Close).text() == "Закрити"
+
+
+# ------------------------------------------------------------------ bars and arcs
+def test_scale_number_and_track_controls(window: MainWindow) -> None:
+    window.open_file(ROOT / "examples" / "weather.espui")
+    props = window.properties
+    window.doc.select("t_val")  # a number: no track options
+    assert not props.track_row.isVisibleTo(props)
+    window.doc.select("h_bar")
+    assert props.track_row.isVisibleTo(props)
+    assert props.show_value.isChecked()
+    assert props.show_track.isChecked()
+    assert props.track_edit.text() == "#23343f"
+    props.show_value.setChecked(False)
+    props.track_edit.setText("#ff0000")
+    props.track_edit.editingFinished.emit()
+    props.show_track.setChecked(False)
+    widget = window.doc.page.widget("h_bar")
+    assert widget is not None
+    assert (widget.show_value, widget.track_color, widget.show_track) == (False, "#ff0000", False)
+    assert not props.track_edit.isEnabled()  # no track: its colour is not used
+    window.doc.undo_stack.undo()
+    widget = window.doc.page.widget("h_bar")
+    assert widget is not None
+    assert widget.show_track

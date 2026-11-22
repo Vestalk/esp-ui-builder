@@ -34,9 +34,11 @@ from espui.core.colors import to_wire
 from espui.core.evaluate import pivot_offset, round_half_up
 from espui.core.hardware import Chip
 from espui.core.models import (
+    DEFAULT_TRACK_COLOR,
     BoolParameter,
     ChartSettings,
     Condition,
+    Display,
     EnumParameter,
     FloatParameter,
     IntParameter,
@@ -69,6 +71,8 @@ MICROPICO_DEFAULT_TYPES = ("py", "txt", "log", "json", "xml", "html", "js", "css
 SYNC_FILE_TYPES = ("py", "json", "bin")
 """What a generated project needs uploaded; "bin" = pictures."""
 MAIN_FILE = "main.py"
+PACKAGE_FILE = "__init__.py"
+"""Makes the page folder importable from anywhere on the board (``from ui.main import …``)."""
 MAIN_EXAMPLE_FILE = "main.example.py"
 """Written by older versions next to an edited main.py; removed on generation."""
 """Where the new example goes when the developer changed main.py."""
@@ -190,13 +194,18 @@ def generate(
     warnings: list[str] = []
 
     driver = get_driver(project.display.driver)
+    driver_files = driver.files_for(project.display.profile.controller)
     files: dict[str, bytes] = {}
-    files[driver.files[0]] = render_display_settings(project).encode("utf-8")
-    for name in driver.files[1:]:
+    files[driver_files[0]] = render_display_settings(project).encode("utf-8")
+    for name in driver_files[1:]:
         files[name] = runtime_file(name).read_bytes()
     if driver.license_file:
         files[driver.license_file] = runtime_file(driver.license_file).read_bytes()
     files[DRAW_FILE] = runtime_file(DRAW_FILE).read_bytes()
+    if project.display.touch is not None:
+        files[TOUCH_FILE] = runtime_file(TOUCH_FILE).read_bytes()
+    if project.display.sd is not None:
+        files[SD_FILE] = runtime_file(SD_FILE).read_bytes()
 
     drawn = {page.name: [w for w in page.widgets if w.type in SUPPORTED_TYPES] for page in pages}
     needs: dict[FontKey, CharNeeds] = {}
@@ -254,8 +263,17 @@ def generate(
         files.update(image_plan.files)
         files[VSCODE_SETTINGS] = vscode_settings().encode("utf-8")
         notes += tuple(image_plan.summary())
-    main_context = {**contexts[0], "pages": contexts}
+    display = project.display
+    main_context = {
+        **contexts[0],
+        "pages": contexts,
+        "touch": display.touch is not None,
+        "sd": display.sd.mount if display.sd is not None else "",
+    }
     files[MAIN_FILE] = _render("main.py.j2", main_context).encode("utf-8")
+    files[PACKAGE_FILE] = _render(
+        "package_init.py.j2", {"modules": [f"ui_{page.name}" for page in pages]}
+    ).encode("utf-8")
     return Generation(
         files=files, warnings=tuple(warnings), pages=tuple(p.name for p in pages), notes=notes
     )
@@ -306,6 +324,33 @@ def spi_id(chip: Chip) -> int:
     return 2 if chip is Chip.ESP32 else 1
 
 
+def _touch_settings(display: Display) -> str:
+    touch = display.touch
+    if touch is None:
+        return "None"
+    if touch.kind == "xpt2046":
+        return (
+            f'{{"kind": "xpt2046", "cs": {touch.cs}, "irq": {touch.irq}, '
+            f'"x_min": {touch.x_min}, "x_max": {touch.x_max}, '
+            f'"y_min": {touch.y_min}, "y_max": {touch.y_max}, "swap_xy": {touch.swap_xy}}}'
+        )
+    return (
+        f'{{"kind": "cst816s", "sda": {touch.sda}, "scl": {touch.scl}, '
+        f'"irq": {touch.irq}, "rst": {touch.rst}}}'
+    )
+
+
+def _sd_settings(display: Display) -> str:
+    sd = display.sd
+    if sd is None:
+        return "None"
+    return f'{{"cs": {sd.cs}, "mount": {_py(sd.mount)}, "spi_hz": {sd.spi_hz:_}}}'
+
+
+TOUCH_FILE = "ui_touch.py"
+SD_FILE = "ui_sd.py"
+
+
 def render_display_settings(project: Project) -> str:
     display = project.display
     pins = display.pins
@@ -315,17 +360,26 @@ def render_display_settings(project: Project) -> str:
             f'DRIVER = "{display.driver.value}"  # "builtin" | "st7789py"',
             "PINS = {"
             f'"sck": {pins.sck}, "mosi": {pins.mosi}, "cs": {pins.cs}, '
-            f'"dc": {pins.dc}, "rst": {pins.rst}, "blk": {pins.bl}'
-            "}  # blk: None if absent",
+            f'"dc": {pins.dc}, "rst": {pins.rst}, "blk": {pins.bl}, "miso": {pins.miso}'
+            "}  # None: the module has no such pin",
             f"SPI_ID = {spi_id(display.mcu)}  # {display.mcu.label}",
             f"SPI_HZ = {display.spi_hz:_}",
             f"WIDTH = {profile.width}  # physical panel size, portrait",
             f"HEIGHT = {profile.height}",
             f"ROTATION = {display.rotation}  # 0-3",
-            f"INVERT = {profile.invert}",
+            f"INVERT = {display.inverted}",
+            f'CONTROLLER = "{profile.controller}"  # {profile.title}',
+            "ROTATIONS = (  # (MADCTL, width, height, x offset, y offset) per rotation",
+            *(
+                f"    ({row[0]:#04x}, {row[1]}, {row[2]}, {row[3]}, {row[4]}),"
+                for row in profile.rotation_table()
+            ),
+            ")",
             f"BUF_BYTES = {display.buf_bytes:_}  # region buffer: one strip of what is redrawn",
             f"IMAGE_CACHE = {display.image_cache:_}"
             "  # RAM for keeping pictures (0 = read from flash each time)",
+            f"TOUCH = {_touch_settings(display)}  # touch panel (ui_touch.py), None = none",
+            f"SD = {_sd_settings(display)}  # microSD card (ui_sd.py), None = none",
         ]
     )
     template = runtime_file(get_driver(display.driver).files[0]).read_text("utf-8")
@@ -567,9 +621,14 @@ def _chart_args(widget: Widget, param: Parameter | None, value: str | None) -> l
 
 
 def _image_code(
-    widget: Widget, page: Page, pos: list[str], images: ImagePlan | None
+    widget: Widget,
+    page: Page,
+    pos: list[str],
+    images: ImagePlan | None,
+    extra: list[str] | None = None,
 ) -> tuple[list[str], list[str]]:
-    """(draw call lines, ``_anim_`` body) of an image widget."""
+    """(draw call lines, ``_anim_`` body) of an image widget; ``extra``: ``["r"]`` if turned."""
+    extra = extra or []
     wid = _py(widget.id)
     if widget.bind:
         value = f"p[{_py(widget.bind)}]"
@@ -578,18 +637,22 @@ def _image_code(
             f"info = self._anim_{widget.id}()",
             "if info is not None:",
             f"    path = _d.frame_path(info[0], self.frame({wid}))",
-            *_call("_d.image", ["fb", *pos, "path"]),
+            *_call("_d.image", ["fb", *pos, "path", *extra]),
         ]
         return call, [f"return _d.anim_info(self.p[{_py(widget.bind)}])"]
     path = (images.paths.get((page.name, widget.id)) if images else None) or None
     if path is None:
-        return _call("_d.missing", ["fb", *pos]), []
+        return _call("_d.image", ["fb", *pos, '""', *extra]) if extra else _call(
+            "_d.missing", ["fb", *pos]
+        ), []
     anim = images.animations.get(path) if images else None
     if anim is None:
-        return _call("_d.image", ["fb", *pos, _py(path)]), []
+        return _call("_d.image", ["fb", *pos, _py(path), *extra]), []
     folder, frames, delay = anim
     frame = f"_d.frame_path({_py(folder)}, self.frame({wid}))"
-    return _call("_d.image", ["fb", *pos, frame]), [f"return ({_py(folder)}, {frames}, {delay})"]
+    return _call("_d.image", ["fb", *pos, frame, *extra]), [
+        f"return ({_py(folder)}, {frames}, {delay})"
+    ]
 
 
 def _widget_code(
@@ -651,13 +714,7 @@ def _widget_code(
                 f"{MAX_ROTATED_TEXT_PX} px); зменште його або зробіть кут сталим."
             )
     elif kind == "image":
-        if rotated:
-            warnings.append(
-                f"Елемент «{widget.id}»: поворот картинок не підтримується, "
-                "її намальовано без повороту."
-            )
-            rotated, extra = False, []
-        call, code.anim = _image_code(widget, page, pos, images)
+        call, code.anim = _image_code(widget, page, [*pos], images, extra)
         code.loop = widget.image is None or widget.image.play == "loop"
     elif kind == "chart":
         args = ["fb", *pos, *_chart_args(widget, param, value), color, font_ref]
@@ -670,11 +727,22 @@ def _widget_code(
             number = f"_d.num({value}, {isinstance(param, FloatParameter)})"
         else:
             fraction, number = repr(UNBOUND_FRACTION[kind]), '""'
+        if not widget.show_value:
+            number = '""'
+        # The fixed track: the default colour needs no argument, "None" hides it.
+        track = (
+            ["track=None"]
+            if not widget.show_track
+            else []
+            if widget.track_color == DEFAULT_TRACK_COLOR
+            else [f"track={_color(widget.track_color)}"]
+        )
         if kind == "bar":
             args = ["fb", *pos, fraction, color, _py(widget.format), number, font_ref, *extra]
-            call = _call("_d.bar", args)
+            call = _call("_d.bar", [*args, *track])
         else:
-            call = _call("_d.arc", ["fb", *pos, fraction, color, number, font_ref, *extra])
+            args = ["fb", *pos, fraction, color, number, font_ref, *extra, *track]
+            call = _call("_d.arc", args)
 
     body = _rule_lines(rules, page, widget, _VARS)
     if "visible" in dynamic:

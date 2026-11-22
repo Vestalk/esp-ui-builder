@@ -108,3 +108,57 @@ class DisplayRuntimeContract:
             "white": 0xFFFF,
             "swap": 0x3412,
         }
+
+
+# ------------------------------------------------------------------ ui_tft
+TFT_SIZES = {
+    "ILI9488": ([320, 480], [480, 320]),
+    "GC9A01": ([240, 240], [240, 240]),
+    "ILI9341": ([240, 320], [320, 240]),
+}
+TFT_COLMOD = {"ILI9488": "66", "GC9A01": "05", "ILI9341": "55"}
+BYTES_PER_PIXEL = {"ILI9488": 3, "GC9A01": 2, "ILI9341": 2}
+
+
+class TftRuntimeContract:
+    """The generic built-in driver for the controllers other than ST7789."""
+
+    @pytest.fixture(params=sorted(TFT_SIZES))
+    def controller(self, request: pytest.FixtureRequest) -> str:
+        return str(request.param)
+
+    @pytest.mark.parametrize("rotation", [0, 1, 2, 3])
+    def test_init(self, backend: Backend, controller: str, rotation: int) -> None:
+        r = backend.run("tft_init", controller, rotation, True)
+        assert r["size"] == TFT_SIZES[controller][rotation % 2]
+        assert r["madctl"] == (0x48, 0x28, 0x88, 0xE8)[rotation]  # BGR bit set
+        assert r["colmod"] == TFT_COLMOD[controller]
+        commands = r["commands"]
+        assert commands[0] == SWRESET
+        assert commands.index(COLMOD) < commands.index(MADCTL) < commands.index(INVON)
+        assert commands.index(INVON) < commands.index(SLPOUT) < commands.index(DISPON)
+        assert r["rst"] == [1, 0, 1]
+        assert r["blk"][-1] == 1
+        assert r["cs_high_writes"] == 0
+        w, h = r["size"]
+        assert r["clear_bytes"] == w * h * BYTES_PER_PIXEL[controller]
+
+    def test_inversion_off(self, backend: Backend, controller: str) -> None:
+        r = backend.run("tft_init", controller, 0, False)
+        assert INVOFF in r["commands"]
+        assert INVON not in r["commands"]
+
+    def test_blit(self, backend: Backend, controller: str) -> None:
+        r = backend.run("tft_blit", controller, WIRE_RED, 5, 3)
+        assert r["window"] == _window(3, 4, 5, 3)
+        assert r["bytes"] == 5 * 3 * BYTES_PER_PIXEL[controller]
+        # RGB565 red f800 -> RGB666 f8 00 00 (ILI9488); others send it as is
+        expected = "f80000" * 3 if controller == "ILI9488" else "f800" * 4 + "f8"
+        assert r["head"] == expected
+
+    def test_fill(self, backend: Backend, controller: str) -> None:
+        r = backend.run("tft_fill", controller, WIRE_BLUE, 60, 40)  # several strips for 666
+        assert r["window"] == _window(1, 2, 60, 40)
+        assert r["bytes"] == 60 * 40 * BYTES_PER_PIXEL[controller]
+        expected = "0000f8" * 3 if controller == "ILI9488" else "001f" * 4 + "00"
+        assert r["head"] == expected

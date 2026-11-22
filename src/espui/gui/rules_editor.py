@@ -75,6 +75,7 @@ def _number(lo: float, hi: float, value: float, decimals: int = 1) -> QDoubleSpi
     spin.setDecimals(decimals)
     spin.setValue(value)
     spin.setMaximumWidth(90)
+    spin.setMinimumWidth(64)  # the wide range must not widen the panel
     return spin
 
 
@@ -194,6 +195,12 @@ class RulesEditor(QWidget):
             self.rows.append(row)
         self.add_condition.setEnabled(bool(self._condition_params()))
         self.add_mapping.setEnabled(bool(self._numeric_params()))
+        for combo in self.findChildren(QComboBox):  # rows may get narrower than the longest item
+            combo.setSizeAdjustPolicy(
+                QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+            )
+            longest = max((len(combo.itemText(i)) for i in range(combo.count())), default=1)
+            combo.setMinimumContentsLength(min(longest, 4))  # "=" / "≥" need no more
 
     def _condition_params(self) -> list[Parameter]:
         assert self.page is not None

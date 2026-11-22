@@ -296,6 +296,7 @@ except Exception:  # no native emitter (or not MicroPython): the Python loop
 
 # ------------------------------------------------------------------ primitives
 _clip = [0, 0]  # size of the strip being drawn (set by Page._render)
+_target = [None]  # its bytes (the strip, or the alpha layer between begin/end_alpha)
 _quad = array("h", [0] * 8)
 
 
@@ -399,14 +400,16 @@ def line(fb, x, y, w, h, c, r=None):
         fb.line(x0 + 1, y0, x1 + 1, y1, c)
 
 
-def bar(fb, x, y, w, h, f, c, label_text, value_text, font, r=None):
+def bar(fb, x, y, w, h, f, c, label_text, value_text, font, r=None, track=TRACK_COLOR):
+    """Progress bar; ``track``: colour of the fixed track, None = no track."""
     ty, th, fw, base = bar_layout(x, y, w, h, f, font.size)
     if label_text:
         text(fb, font.fit(label_text, w), x, base, LABEL_COLOR, font, r)
     if value_text:
         s = font.fit(value_text, w)
         text(fb, s, x + w - font.width(s), base, VALUE_COLOR, font, r)
-    rrect(fb, x, ty, w, th, 3, TRACK_COLOR, r)
+    if track is not None:
+        rrect(fb, x, ty, w, th, 3, track, r)
     if fw > 0:
         rrect(fb, x, ty, fw, th, 3, c, r)
 
@@ -432,9 +435,11 @@ def _ring(fb, cx, cy, rad, a0, a1, c, r=None):
         prev = cur
 
 
-def arc(fb, x, y, w, h, f, c, value_text, font, r=None):
+def arc(fb, x, y, w, h, f, c, value_text, font, r=None, track=TRACK_COLOR):
+    """Half-ring gauge; ``track``: colour of the fixed ring, None = no track."""
     cx, cy, rad = arc_geometry(x, y, w, h)
-    _ring(fb, cx, cy, rad, 0.0, pi, TRACK_COLOR, r)
+    if track is not None:
+        _ring(fb, cx, cy, rad, 0.0, pi, track, r)
     if f > 0:
         _ring(fb, cx, cy, rad, 0.0, pi * f, c, r)
     if value_text:
@@ -628,16 +633,24 @@ def missing(fb, x, y, w, h):
     fb.rect(x, y, w, h, MISSING_BORDER)
 
 
-def image(fb, x, y, w, h, path):
+def image(fb, x, y, w, h, path, r=None):
     """Draw a raw RGB565 file (w x h, wire order) row by row: only one row in RAM.
 
     Only the rows inside the strip being drawn are read. A missing file or one
-    of another size gives the grey placeholder instead of an exception.
+    of another size gives the grey placeholder instead of an exception. With
+    ``r`` (see :func:`rot`) the picture is turned around the pivot: it is then
+    read whole (from the cache when :data:`IMAGE_CACHE` allows it).
     """
     if path:
         path = ROOT + path
     if not path or _file_size(path) != 2 * w * h:
-        missing(fb, x, y, w, h)
+        if r is None:
+            missing(fb, x, y, w, h)
+        else:
+            _poly(fb, r, (x, y, x + w, y, x + w, y + h, x, y + h), MISSING_COLOR)
+        return
+    if r is not None:
+        _image_rotated(fb, x, y, w, h, path, r)
         return
     r0 = -y if y < 0 else 0
     r1 = _clip[1] - y if _clip[1] - y < h else h
@@ -645,7 +658,7 @@ def image(fb, x, y, w, h, path):
         return
     pic = _cached(path, w, h)
     if pic is not None:
-        fb.blit(pic, x, y)
+        fb.blit(pic[0], x, y)
         return
     buf = _row_fb(w)
     row = framebuf.FrameBuffer(buf, w, 1, framebuf.RGB565)
@@ -660,20 +673,131 @@ def image(fb, x, y, w, h, path):
 
 
 def _cached(path, w, h):
-    """The whole picture in RAM if :data:`IMAGE_CACHE` allows it, else None."""
+    """(FrameBuffer, bytes) of the whole picture if :data:`IMAGE_CACHE` allows it, else None."""
     pic = _cache.get(path)
     if pic is not None or _cache_used[0] + 2 * w * h > IMAGE_CACHE:
         return pic
+    data = _read_all(path, w, h)
+    if data is None:
+        return None
+    pic = (framebuf.FrameBuffer(data, w, h, framebuf.RGB565), data)
+    _cache[path] = pic
+    _cache_used[0] += len(data)
+    return pic
+
+
+def _read_all(path, w, h):
     try:
         data = bytearray(2 * w * h)
         with open(path, "rb") as f:
             f.readinto(data)
     except (OSError, MemoryError):
         return None
-    pic = framebuf.FrameBuffer(data, w, h, framebuf.RGB565)
-    _cache[path] = pic
-    _cache_used[0] += len(data)
-    return pic
+    return data
+
+
+ROT_ONE = 65536  # fixed point of the rotated copy (16.16)
+
+
+def rotation_terms(r, x, y):
+    """Fixed-point (ku, kv, c, s) of the inverse rotation for a picture at (x, y).
+
+    The pixel (X, Y) of the strip shows the picture's pixel
+    (``(ku + X*c + Y*s) >> 16``, ``(kv - X*s + Y*c) >> 16``): the centre of the
+    screen pixel turned back around the pivot. The editor uses the same terms.
+    """
+    c, s, px, py = r
+    ku = px - x + (0.5 - px) * c + (0.5 - py) * s
+    kv = py - y - (0.5 - px) * s + (0.5 - py) * c
+    return (
+        int(floor(ku * ROT_ONE + 0.5)),
+        int(floor(kv * ROT_ONE + 0.5)),
+        int(floor(c * ROT_ONE + 0.5)),
+        int(floor(s * ROT_ONE + 0.5)),
+    )
+
+
+def _image_rotated(fb, x, y, w, h, path, r):
+    pic = _cached(path, w, h)
+    data = pic[1] if pic is not None else _read_all(path, w, h)
+    dst = _target[0]
+    if data is None or dst is None:
+        _poly(fb, r, (x, y, x + w, y, x + w, y + h, x, y + h), MISSING_COLOR)
+        return
+    bx, by, bw, bh = _rbox_r(r, x, y, w, h)
+    x0 = bx if bx > 0 else 0
+    y0 = by if by > 0 else 0
+    x1 = bx + bw if bx + bw < _clip[0] else _clip[0]
+    y1 = by + bh if by + bh < _clip[1] else _clip[1]
+    if x1 <= x0 or y1 <= y0:
+        return
+    ku, kv, c, s = rotation_terms(r, x, y)
+    rotate_copy(dst, data, array("i", (_clip[0], x0, y0, x1, y1, w, h, ku, kv, c, s)))
+
+
+def _rotate_copy_py(dst, src, q):
+    """Copy the turned picture ``src`` into the strip ``dst`` (both wire-order RGB565)."""
+    dw, x0, y0, x1, y1, sw, sh, ku, kv, c, s = q
+    for yy in range(y0, y1):
+        u = ku + x0 * c + yy * s
+        v = kv - x0 * s + yy * c
+        o = 2 * (yy * dw + x0)
+        for _ in range(x0, x1):
+            su = u >> 16
+            sv = v >> 16
+            if 0 <= su < sw and 0 <= sv < sh:
+                k = 2 * (sv * sw + su)
+                dst[o] = src[k]
+                dst[o + 1] = src[k + 1]
+            u += c
+            v -= s
+            o += 2
+
+
+_ROTATE_VIPER = """
+@micropython.viper
+def rotate_copy(dst, src, q):
+    d = ptr8(dst)
+    b = ptr8(src)
+    p = ptr32(q)
+    dw = p[0]
+    x0 = p[1]
+    y0 = p[2]
+    x1 = p[3]
+    y1 = p[4]
+    sw = p[5]
+    sh = p[6]
+    ku = p[7]
+    kv = p[8]
+    c = p[9]
+    s = p[10]
+    yy = y0
+    while yy < y1:
+        u = ku + x0 * c + yy * s
+        v = kv - x0 * s + yy * c
+        o = 2 * (yy * dw + x0)
+        xx = x0
+        while xx < x1:
+            su = u >> 16
+            sv = v >> 16
+            if su >= 0 and su < sw and sv >= 0 and sv < sh:
+                k = 2 * (sv * sw + su)
+                d[o] = b[k]
+                d[o + 1] = b[k + 1]
+            u += c
+            v -= s
+            o += 2
+            xx += 1
+        yy += 1
+"""
+try:
+    import micropython
+
+    _ns = {"micropython": micropython}
+    exec(_ROTATE_VIPER, _ns)
+    rotate_copy = _ns["rotate_copy"]
+except Exception:  # no native emitter (or not MicroPython): the Python loop
+    rotate_copy = _rotate_copy_py
 
 
 def anim_info(path):
@@ -889,7 +1013,9 @@ class Page:
         """Start a translucent widget: returns a layer that copies the strip so far."""
         _, _, w, h, n, _ = self._strip
         self._layer[:n] = self._mv[:n]
-        return framebuf.FrameBuffer(self._layer[:n], w, h, framebuf.RGB565)
+        layer = self._layer[:n]
+        _target[0] = layer
+        return framebuf.FrameBuffer(layer, w, h, framebuf.RGB565)
 
     def end_alpha(self, level):
         """Blend the pixels the widget changed in the layer over the strip."""
@@ -901,6 +1027,7 @@ class Page:
         y1 = by + bh - sy if by + bh - sy < sh else sh
         if x1 > x0 and y1 > y0:
             blend_rect(self._mv, self._layer, sw, x0, y0, x1, y1, level)
+        _target[0] = self._mv[: self._strip[4]]  # back to drawing into the strip
 
     # -------------------------------------------------------------- rendering
     def _render(self, region):
@@ -917,6 +1044,7 @@ class Page:
             hh = rows if y0 + rows <= y + h else y + h - y0
             n = 2 * w * hh
             buf = self._mv[:n]
+            _target[0] = buf
             fb = framebuf.FrameBuffer(buf, w, hh, framebuf.RGB565)
             fb.fill(bg)
             strip = (x, y0, w, hh)

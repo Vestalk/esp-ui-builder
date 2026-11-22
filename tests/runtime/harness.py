@@ -19,7 +19,7 @@ from typing import Any
 from espui.generators.micropython.drivers import RUNTIME_DIR
 
 SCENARIOS_DIR = Path(__file__).parent
-RUNTIME_MODULES = ("ui_display", "ui_st7789", "st7789py")
+RUNTIME_MODULES = ("ui_display", "ui_st7789", "ui_tft", "st7789py")
 
 
 class ScenarioUnavailableError(RuntimeError):

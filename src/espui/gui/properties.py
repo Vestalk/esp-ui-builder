@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from PySide6.QtCore import QSettings, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QAbstractSpinBox,
     QButtonGroup,
     QCheckBox,
     QColorDialog,
@@ -45,6 +46,7 @@ from espui.core.models import (
     FONT_SIZE_TYPES,
     FONT_TYPES,
     PIVOT_FRACTIONS,
+    SCALE_TYPES,
     WIDGET_TYPES,
     ChartSettings,
     ImageSettings,
@@ -97,6 +99,9 @@ class Section(QWidget):
         self.body = QWidget()
         self.form = QFormLayout(self.body)
         self.form.setContentsMargins(8, 0, 0, 6)
+        # A narrow panel puts the label above its field instead of cutting the field off.
+        self.form.setRowWrapPolicy(QFormLayout.RowWrapPolicy.WrapLongRows)
+        self.form.setFieldGrowthPolicy(QFormLayout.FieldGrowthPolicy.AllNonFixedFieldsGrow)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
@@ -117,6 +122,18 @@ class Section(QWidget):
         # A collapsed block is only its header (layouts don't shrink a hidden body by themselves).
         self.setMaximumHeight(16777215 if expanded else self.header.sizeHint().height() + 4)
         QSettings().setValue(f"sections/{self.title}", not expanded)
+
+
+MIN_COMBO_CHARS = 6
+
+
+def shrinkable_combos(root: QWidget) -> None:
+    """Drop-downs may get narrower than their longest item (the open list still shows it)."""
+    for combo in root.findChildren(QComboBox):
+        combo.setSizeAdjustPolicy(QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon)
+        combo.setMinimumContentsLength(MIN_COMBO_CHARS)
+    for spin in root.findChildren(QAbstractSpinBox):
+        spin.setMinimumWidth(0)  # spin boxes may share a narrow row
 
 
 class PropertiesPanel(QScrollArea):
@@ -157,6 +174,9 @@ class PropertiesPanel(QScrollArea):
         self.placeholders = [self.rules_section]
         self.layout_.addStretch(1)
 
+        content = self.widget()
+        assert content is not None
+        shrinkable_combos(content)
         doc.selection_changed.connect(self.load)
         doc.changed.connect(self.load)
         self.load()
@@ -193,6 +213,28 @@ class PropertiesPanel(QScrollArea):
         crow.setContentsMargins(0, 0, 0, 0)
         crow.addWidget(self.color_button)
         crow.addWidget(self.color_edit)
+        # Bars and arcs: the number of the value, the fixed track the value fills.
+        self.show_value = QCheckBox("Показувати число")
+        self.show_value.setObjectName("show_value")
+        self.show_value.toggled.connect(lambda on: self.set_field("show_value", on))
+        self.track_button = QPushButton()
+        self.track_button.setObjectName("track_button")
+        self.track_button.setToolTip("Колір доріжки, яку заповнює значення")
+        self.track_button.clicked.connect(self._pick_track_color)
+        self.track_edit = QLineEdit()
+        self.track_edit.setObjectName("track_edit")
+        self.track_edit.setMaximumWidth(90)
+        self.track_edit.editingFinished.connect(
+            lambda: self.set_field("track_color", self.track_edit.text().strip())
+        )
+        self.show_track = QCheckBox("Показувати доріжку")
+        self.show_track.setObjectName("show_track")
+        self.show_track.toggled.connect(lambda on: self.set_field("show_track", on))
+        track = self.track_row = QWidget()
+        trow = QHBoxLayout(track)
+        trow.setContentsMargins(0, 0, 0, 0)
+        trow.addWidget(self.track_button)
+        trow.addWidget(self.track_edit)
         self.bind_combo = QComboBox()
         self.bind_combo.activated.connect(
             lambda _: self.set_field("bind", self.bind_combo.currentData())
@@ -228,6 +270,9 @@ class PropertiesPanel(QScrollArea):
         s.form.addRow("Тип", self.type_combo)
         s.form.addRow("Позиція, розмір", geometry)
         s.form.addRow("Колір", color)
+        s.form.addRow("Доріжка", self.track_row)
+        s.form.addRow("", self.show_track)
+        s.form.addRow("", self.show_value)
         s.form.addRow("Дані з параметра", self.bind_combo)
         s.form.addRow("Формат / текст", self.format_edit)
         s.form.addRow("Шрифт", font)
@@ -248,7 +293,8 @@ class PropertiesPanel(QScrollArea):
         self.opacity_slider.setRange(0, 100)
         for control in (self.opacity_spin, self.opacity_slider):
             control.valueChanged.connect(lambda v: self.set_field("opacity", v))
-        self.opacity_all = QPushButton("Застосувати непрозорість до всіх елементів сторінки")
+        self.opacity_all = QPushButton("Для всіх елементів")
+        self.opacity_all.setToolTip("Застосувати цю непрозорість до всіх елементів сторінки")
         self.opacity_all.clicked.connect(
             lambda: self.doc.apply_opacity_to_all(self.opacity_spin.value())
         )
@@ -467,6 +513,16 @@ class PropertiesPanel(QScrollArea):
         self.bind_combo.setCurrentIndex(max(0, self.bind_combo.findData(w.bind)))
         self.bind_combo.setEnabled(self.bind_combo.count() > 1)
         self.format_edit.setText(w.format)
+        scale = w.type in SCALE_TYPES
+        for row in (self.track_row, self.show_track, self.show_value):
+            self.main.form.setRowVisible(row, scale)
+        if scale:
+            self.show_value.setChecked(w.show_value)
+            self.show_track.setChecked(w.show_track)
+            self.track_edit.setText(w.track_color)
+            self.track_button.setStyleSheet(f"background: {w.track_color}; min-width: 40px")
+            for control in (self.track_button, self.track_edit):
+                control.setEnabled(w.show_track)
         has_format = w.type in ("text", "value", "bar")
         self.main.form.setRowVisible(self.format_edit, has_format)
         self.main.form.setRowVisible(self.font_row, w.type in FONT_TYPES)
@@ -613,6 +669,14 @@ class PropertiesPanel(QScrollArea):
         color = QColorDialog.getColor(QColor(widget.color), self, "Колір")
         if color.isValid():
             self.set_field("color", color.name())
+
+    def _pick_track_color(self) -> None:
+        widget = self.doc.widget
+        if widget is None:
+            return
+        color = QColorDialog.getColor(QColor(widget.track_color), self, "Колір доріжки")
+        if color.isValid():
+            self.set_field("track_color", color.name())
 
     def _pivot_chosen(self, _index: int) -> None:
         widget = self.doc.widget

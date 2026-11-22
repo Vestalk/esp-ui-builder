@@ -4,11 +4,18 @@ from __future__ import annotations
 
 import pytest
 
-from tests.runtime.contract import DisplayRuntimeContract
+from tests.runtime.contract import DisplayRuntimeContract, TftRuntimeContract
 from tests.runtime.harness import CPythonBackend
 
 
 class TestDisplayRuntimeCPython(DisplayRuntimeContract):
+    @pytest.fixture(scope="class")
+    @classmethod
+    def backend(cls) -> CPythonBackend:
+        return CPythonBackend()
+
+
+class TestTftRuntimeCPython(TftRuntimeContract):
     @pytest.fixture(scope="class")
     @classmethod
     def backend(cls) -> CPythonBackend:

@@ -28,7 +28,14 @@ from pydantic_core import PydanticCustomError
 from espui.core.colors import is_hex, normalize_hex
 from espui.core.hardware import DEFAULT_DRIVER, Chip, Driver
 from espui.core.identifiers import identifier_problem, page_name_problem
-from espui.displays import DEFAULT_MODEL, DisplayProfile, get_profile
+from espui.displays import (
+    CUSTOM_MODEL,
+    DEFAULT_MODEL,
+    Controller,
+    DisplayProfile,
+    custom_profile,
+    get_profile,
+)
 
 SCHEMA_VERSION = 1
 
@@ -357,6 +364,12 @@ class ChartSettings(Model):
     grid: bool = True
 
 
+DEFAULT_TRACK_COLOR = "#23343f"
+"""The track of bars and arcs (ui_draw.TRACK_COLOR)."""
+SCALE_TYPES = frozenset({"bar", "arc"})
+"""Widgets with a track and a number: show_value / track_color / show_track apply."""
+
+
 class Widget(Model):
     id: Identifier
     type: WidgetType
@@ -377,6 +390,12 @@ class Widget(Model):
     rules: list[Rule] = Field(default_factory=list)
     image: ImageSettings | None = None
     chart: ChartSettings | None = None
+    show_value: bool = True
+    """Bar / arc: draw the number of the value."""
+    track_color: HexColor = DEFAULT_TRACK_COLOR
+    """Bar / arc: colour of the fixed track the value fills."""
+    show_track: bool = True
+    """Bar / arc: draw the track (off: only the filled part shows)."""
 
     @model_validator(mode="before")
     @classmethod
@@ -456,17 +475,67 @@ class Pins(Model):
     sck: int = Field(ge=0)
     mosi: int = Field(ge=0)
     dc: int = Field(ge=0)
-    cs: int = Field(ge=0)
-    rst: int = Field(ge=0)
+    cs: int | None = Field(None, ge=0)
+    """Chip select; None if the module has none (its CS is tied low: SPI mode 3 then)."""
+    rst: int | None = Field(None, ge=0)
+    """Reset; None if the module has none (a software reset is sent instead)."""
     bl: int | None = Field(None, ge=0)
     """Backlight; None if the module has no BLK pin."""
+    miso: int | None = Field(None, ge=0)
+    """Data back to the board: needed by an XPT2046 touch panel and an SD card on the bus."""
 
     def assigned(self) -> dict[str, int]:
         return {
             name: value
-            for name in ("sck", "mosi", "dc", "cs", "rst", "bl")
+            for name in ("sck", "mosi", "dc", "cs", "rst", "bl", "miso")
             if (value := getattr(self, name)) is not None
         }
+
+
+TouchKind = Literal["xpt2046", "cst816s"]
+
+
+class Touch(Model):
+    """A touch panel on the display module (off unless ``Display.touch`` is set).
+
+    * ``xpt2046`` — resistive, on the display's SPI bus (its own CS; needs MISO);
+    * ``cst816s`` — capacitive, on I2C (round GC9A01 touch modules).
+    """
+
+    kind: TouchKind = "xpt2046"
+    cs: int | None = Field(None, ge=0)
+    """XPT2046: T_CS."""
+    irq: int | None = Field(None, ge=0)
+    """XPT2046 T_IRQ / CST816S INT: "touched" (optional, saves polling the chip)."""
+    sda: int | None = Field(None, ge=0)
+    """CST816S: I2C data."""
+    scl: int | None = Field(None, ge=0)
+    """CST816S: I2C clock."""
+    rst: int | None = Field(None, ge=0)
+    """CST816S: reset (optional)."""
+    x_min: int = Field(200, ge=0, le=4095)
+    """XPT2046 calibration: raw readings at the panel edges (portrait)."""
+    x_max: int = Field(3900, ge=0, le=4095)
+    y_min: int = Field(200, ge=0, le=4095)
+    y_max: int = Field(3900, ge=0, le=4095)
+    """Give min > max to mirror an axis."""
+    swap_xy: bool = False
+    """XPT2046: the panel's raw X runs along the long side."""
+
+    def assigned(self) -> dict[str, int]:
+        names = ("cs", "irq") if self.kind == "xpt2046" else ("sda", "scl", "irq", "rst")
+        return {
+            f"touch_{name}": value for name in names if (value := getattr(self, name)) is not None
+        }
+
+
+class SdCard(Model):
+    """A microSD slot on the display module, on the display's SPI bus (needs MISO)."""
+
+    cs: int = Field(ge=0)
+    mount: str = Field("/sd", pattern=r"^/[A-Za-z0-9_]{1,16}$")
+    """Where the card appears in the board's file system."""
+    spi_hz: int = Field(20_000_000, ge=400_000, le=40_000_000)
 
 
 def _default_pins() -> Pins:
@@ -478,6 +547,22 @@ DEFAULT_BUF_BYTES = 16_384
 MIN_BUF_BYTES = 1_024
 MAX_BUF_BYTES = 4_000_000
 MAX_IMAGE_CACHE = 32_000_000
+
+
+class CustomPanel(Model):
+    """A panel described by hand (``Display.model == "custom"``)."""
+
+    controller: Controller = "ST7789"
+    width: int = Field(240, ge=16, le=800)
+    """Physical size in portrait (rotation 0)."""
+    height: int = Field(320, ge=16, le=800)
+    x_offset: int = Field(0, ge=0, le=400)
+    """Where the panel starts in the controller's memory (e.g. 52 / 40 for 135×240)."""
+    y_offset: int = Field(0, ge=0, le=400)
+    bgr: bool | None = None
+    """Swap red and blue (colour order); None = the controller's usual one."""
+    round: bool = False
+    """Round panel: only the inscribed circle is visible."""
 
 
 class Display(Model):
@@ -502,9 +587,34 @@ class Display(Model):
         """A whole-screen buffer: the most the region buffer can use."""
         return 2 * self.profile.width * self.profile.height
 
+    custom: CustomPanel | None = None
+    """The panel for ``model == "custom"`` ("Свій розмір")."""
+    touch: Touch | None = None
+    """A touch panel on the module; None (default) = a plain display."""
+    sd: SdCard | None = None
+    """A microSD slot on the module; None (default) = not used."""
+    invert: bool | None = None
+    """Colour inversion; None = as the display profile says."""
+
     @property
     def profile(self) -> DisplayProfile:
+        if self.model == CUSTOM_MODEL:
+            c = self.custom or CustomPanel()
+            return custom_profile(
+                c.controller,
+                c.width,
+                c.height,
+                x_offset=c.x_offset,
+                y_offset=c.y_offset,
+                bgr=c.bgr,
+                round_panel=c.round,
+            )
         return get_profile(self.model)
+
+    @property
+    def inverted(self) -> bool:
+        """The inversion the board uses: the override or the profile's."""
+        return self.profile.invert if self.invert is None else self.invert
 
     @property
     def size(self) -> tuple[int, int]:

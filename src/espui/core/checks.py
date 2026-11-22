@@ -23,7 +23,7 @@ from espui.core.compat import (
     value_problem,
 )
 from espui.core.evaluate import format_problem
-from espui.core.hardware import CHIP_RULES, driver_supports
+from espui.core.hardware import CHIP_RULES, driver_drives, driver_supports
 from espui.core.issues import Issue, Loc, ProjectValidationError, format_path
 from espui.core.models import (
     FONT_SIZE_TYPES,
@@ -42,7 +42,7 @@ from espui.core.models import (
     SeriesParameter,
     Widget,
 )
-from espui.displays import UnknownDisplayError
+from espui.displays import CUSTOM_MODEL, UnknownDisplayError
 
 _TYPE_TITLES = {
     "float": "float",
@@ -108,17 +108,66 @@ def check_display(display: Display, loc: Loc = ("display",)) -> Iterator[Issue]:
             (*loc, "driver"),
             f"драйвер «{display.driver}» не підтримує {display.mcu.label}",
         )
+    if not driver_drives(display.driver, profile.controller):
+        yield _issue(
+            (*loc, "driver"),
+            f"драйвер «{display.driver}» не працює з контролером {profile.controller}",
+        )
+    if display.model == CUSTOM_MODEL:
+        ram_w, ram_h = profile.controller_info.ram
+        if profile.width + profile.x_offset > ram_w or profile.height + profile.y_offset > ram_h:
+            yield _issue(
+                (*loc, "custom"),
+                f"{profile.width}×{profile.height} зі зсувом {profile.x_offset}/"
+                f"{profile.y_offset} не вміщується в пам'ять {profile.controller} "
+                f"({ram_w}×{ram_h})",
+            )
     rules = CHIP_RULES[display.mcu]
-    assigned = display.pins.assigned()
+    # Every GPIO of the module: display, touch panel, SD card (one pin, one job).
+    places: dict[str, Loc] = {n: (*loc, "pins", n) for n in display.pins.assigned()}
+    assigned = dict(display.pins.assigned())
+    if display.touch is not None:
+        for name, gpio in display.touch.assigned().items():
+            assigned[name] = gpio
+            places[name] = (*loc, "touch", name.removeprefix("touch_"))
+    if display.sd is not None:
+        assigned["sd_cs"] = display.sd.cs
+        places["sd_cs"] = (*loc, "sd", "cs")
     used = Counter(assigned.values())
     for name, gpio in assigned.items():
-        pin_loc = (*loc, "pins", name)
-        problem = rules.problem(gpio)
+        problem = rules.problem(gpio, input_only_ok=name in INPUT_PINS)
         if problem:
-            yield _issue(pin_loc, problem)
+            yield _issue(places[name], problem)
         elif used[gpio] > 1:
             others = ", ".join(n for n, g in assigned.items() if g == gpio and n != name)
-            yield _issue(pin_loc, f"GPIO{gpio} вже використано для {others}")
+            yield _issue(places[name], f"GPIO{gpio} вже використано для {others}")
+    yield from _check_extras(display, loc)
+
+
+INPUT_PINS = frozenset({"miso", "touch_irq"})
+"""Pins the board only reads: GPIO 34-39 of the ESP32 (input only) are fine for them."""
+
+
+def _check_extras(display: Display, loc: Loc) -> Iterator[Issue]:
+    """What a touch panel / an SD card on the module needs."""
+    touch, sd = display.touch, display.sd
+    needs_miso = [what for what, on in (("сенсор XPT2046", touch is not None and touch.kind
+                  == "xpt2046"), ("SD-карта", sd is not None)) if on]  # fmt: skip
+    if needs_miso and display.pins.miso is None:
+        yield _issue(
+            (*loc, "pins", "miso"),
+            f"вкажіть MISO: {' і '.join(needs_miso)} відповідають платі по ньому",
+        )
+    if touch is not None:
+        if touch.kind == "xpt2046":
+            if touch.cs is None:
+                yield _issue((*loc, "touch", "cs"), "вкажіть T_CS сенсора")
+            if touch.x_min == touch.x_max or touch.y_min == touch.y_max:
+                yield _issue((*loc, "touch", "x_max"), "калібрування: краї не можуть збігатися")
+        else:
+            for name in ("sda", "scl"):
+                if getattr(touch, name) is None:
+                    yield _issue((*loc, "touch", name), f"вкажіть {name.upper()} сенсора (I2C)")
 
 
 # ------------------------------------------------------------------ images

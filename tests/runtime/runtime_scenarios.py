@@ -199,3 +199,48 @@ def color_helpers():
         "white": ui_st7789.color(255, 255, 255),
         "swap": ui_st7789.swap16(0x1234),
     }
+
+
+# ------------------------------------------------- ui_tft (ILI9488 / GC9A01 / ILI9341)
+def _open_tft(controller, rotation=0, invert=False):
+    spi, pins = _bus(True)
+    display = ui_display.open_display(
+        "builtin", spi, pins, 0, 0, rotation, invert, controller=controller, rotations=None
+    )
+    return display, spi, pins
+
+
+def tft_init(controller, rotation, invert):
+    display, spi, pins = _open_tft(controller, rotation, invert)
+    tx = spi.transactions()
+    commands = [c for c, _p in tx]
+    return {
+        "commands": commands,
+        "madctl": [p for c, p in tx if c == 0x36][-1][0],
+        "colmod": _hex([p for c, p in tx if c == 0x3A][-1]),
+        "size": [display.width, display.height],
+        "rst": pins["rst"].history,
+        "blk": pins["blk"].history,
+        "cs_high_writes": spi.writes_with_cs_high(),
+        # the full-screen clear at start-up: how many bytes went after its RAMWR
+        "clear_bytes": len(_pixels_after_last_ramwr(tx)),
+    }
+
+
+def tft_blit(controller, wire_color, w, h):
+    display, spi, _pins = _open_tft(controller)
+    spi.reset()
+    buf, _real = _rgb565_buffer(w, h, wire_color)
+    display.blit(buf, 3, 4, w, h)
+    tx = spi.transactions()
+    pixels = _pixels_after_last_ramwr(tx)
+    return {"window": _last_window(tx), "bytes": len(pixels), "head": _hex(pixels[:9])}
+
+
+def tft_fill(controller, wire_color, w, h):
+    display, spi, _pins = _open_tft(controller)
+    spi.reset()
+    display.fill_rect(1, 2, w, h, wire_color)
+    tx = spi.transactions()
+    pixels = _pixels_after_last_ramwr(tx)
+    return {"window": _last_window(tx), "bytes": len(pixels), "head": _hex(pixels[:9])}
