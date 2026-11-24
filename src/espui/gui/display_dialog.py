@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from typing import Any
 
 from PySide6.QtCore import Qt
@@ -33,7 +32,6 @@ from espui.core.models import (
     CustomPanel,
     Display,
     Pins,
-    SdCard,
     Touch,
 )
 from espui.displays import CONTROLLERS, CUSTOM_MODEL, load_profiles
@@ -61,21 +59,24 @@ PIN_LABELS = (
     ("MISO", "miso"),
 )
 OPTIONAL_PINS = frozenset({"cs", "rst", "bl", "miso"})
-"""May stay empty: the module has no such pin (MISO: only for a touch panel / SD card)."""
+"""May stay empty: the module has no such pin (MISO: only for an XPT2046 touch panel)."""
 TOUCH_KINDS = ((None, "немає"), ("xpt2046", "XPT2046 — резистивний, SPI"),
                ("cst816s", "CST816S — ємнісний, I2C"))  # fmt: skip
 # (label, Touch field, which kinds, suggested GPIO on ESP32-S3)
 TOUCH_PINS = (
     ("T_CS", "cs", "xpt2046", 14),
     ("T_IRQ", "irq", "xpt2046", 15),
+    ("T_CLK", "sck", "xpt2046", None),  # a bus of its own (e.g. the CYD): all three, or none
+    ("T_DIN", "mosi", "xpt2046", None),
+    ("T_DO", "miso", "xpt2046", None),
     ("SDA", "sda", "cst816s", 16),
     ("SCL", "scl", "cst816s", 17),
     ("INT", "irq", "cst816s", 18),
     ("RST", "rst", "cst816s", None),
 )
-OPTIONAL_TOUCH = frozenset({"irq", "rst"})
+OPTIONAL_TOUCH = frozenset({"irq", "rst", "sck", "mosi", "miso"})
+OWN_BUS = ("sck", "mosi", "miso")
 SUGGESTED_MISO = 13
-SUGGESTED_SD_CS = 21
 
 
 def parse_pin(text: str, label: str, optional: bool) -> tuple[int | None, str | None]:
@@ -116,8 +117,6 @@ def field_label(path: str) -> str:
         names = {f: label for label, f, kind, _s in TOUCH_PINS if kind != "cst816s" or f != "irq"}
         names.update({"sda": "SDA", "scl": "SCL", "rst": "RST", "x_max": "калібрування"})
         return f"Сенсор {names.get(field, field)}"
-    if "sd" in parts:
-        return "SD_CS" if field == "cs" else f"SD {field}"
     return {f: label for label, f in PIN_LABELS}.get(field, field)
 
 
@@ -197,6 +196,8 @@ class DisplayDialog(QDialog):
         self.invert.setToolTip("Увімкніть, якщо на платі кольори «негативні» (білий — чорний)")
         self.invert.setChecked(display.inverted)
         self._invert_touched = display.invert is not None
+        self._suggested_for = display.model
+        """The model whose touch panel was last offered (reopening must not re-offer it)."""
 
         self.rotation = QComboBox()
         for rot in range(4):
@@ -241,7 +242,7 @@ class DisplayDialog(QDialog):
             grid.addWidget(caption, i // 3, (i % 3) * 2)
             grid.addWidget(edit, i // 3, (i % 3) * 2 + 1)
             edit.textChanged.connect(self._validate)
-        miso_tip = "Спільний для сенсора XPT2046 і SD-карти: по ньому вони відповідають платі"
+        miso_tip = "Для сенсора XPT2046: по ньому він відповідає платі (спільна шина SPI)"
         self.pins["miso"].setToolTip(miso_tip)
         self.pin_labels["miso"].setToolTip(miso_tip)
 
@@ -310,7 +311,6 @@ class DisplayDialog(QDialog):
         column.addLayout(form)
         column.addWidget(pins_box)
         column.addWidget(self._build_touch(display))
-        column.addWidget(self._build_sd(display))
         column.addWidget(memory_box)
         column.addStretch(1)
         # Taller than a laptop screen with every option shown: the settings scroll,
@@ -371,6 +371,21 @@ class DisplayDialog(QDialog):
             }
         )
 
+    def _apply_board(self, panel: Display) -> None:
+        """A board with the display built in (the CYD): its chip, pins and touch panel."""
+        profile = panel.profile
+        self.chip.setCurrentIndex(self.chip.findData(profile.board))
+        for _label, field in PIN_LABELS:
+            value = profile.default_pins.get(field)
+            self.pins[field].setText("" if value is None else str(value))
+        if profile.touch is not None:
+            self.touch_kind.setCurrentIndex(self.touch_kind.findData(profile.touch))
+            for (kind, field), edit in self.touch_pins.items():
+                if kind == profile.touch:
+                    value = (profile.touch_pins or {}).get(field)
+                    edit.setText("" if value is None else str(value))
+        self._show_miso()
+
     def _invert_toggled(self) -> None:
         self._invert_touched = True
         self._validate()
@@ -386,6 +401,16 @@ class DisplayDialog(QDialog):
             self.invert.blockSignals(True)
             self.invert.setChecked(panel.profile.invert)
             self.invert.blockSignals(False)
+        if panel.profile.board and panel.model != self._suggested_for:
+            self._apply_board(panel)
+        suggested = panel.profile.touch
+        if (
+            suggested is not None
+            and panel.model != self._suggested_for
+            and self.touch_kind.currentData() is None
+        ):  # a module with a touch panel: offer it (the user can switch it off)
+            self.touch_kind.setCurrentIndex(self.touch_kind.findData(suggested))
+        self._suggested_for = panel.model
         controller = panel.profile.controller
         model = self.driver.model()
         for row in range(self.driver.count()):
@@ -470,7 +495,7 @@ class DisplayDialog(QDialog):
                     break
         self._validate()
 
-    # ------------------------------------------------------------------ touch / SD
+    # ------------------------------------------------------------------ touch
     def _build_touch(self, display: Display) -> QGroupBox:
         touch = display.touch
         box = QGroupBox("Сенсорний екран")
@@ -492,7 +517,7 @@ class DisplayDialog(QDialog):
             edit.setPlaceholderText("немає" if field in OPTIONAL_TOUCH else "GPIO")
             edit.setMaximumWidth(70)
             edit.setProperty("suggested", suggested)
-            edit.textChanged.connect(self._validate)
+            edit.textChanged.connect(self._touch_pin_edited)
             self.touch_pins[(kind, field)] = edit
             form.addRow(label, edit)
         cal = touch or Touch()
@@ -540,6 +565,11 @@ class DisplayDialog(QDialog):
             }[kind]
         )
 
+    def _touch_pin_edited(self) -> None:
+        if hasattr(self, "pin_labels"):  # built: the own-bus pins decide whether MISO shows
+            self._show_miso()
+        self._validate()
+
     def _touch_kind_changed(self) -> None:
         """A new touch chip: suggested free pins, MISO for the SPI one."""
         kind = self.touch_kind.currentData()
@@ -554,8 +584,10 @@ class DisplayDialog(QDialog):
         self._validate()
 
     def miso_needed(self) -> bool:
-        """MISO is shown (and used) only with an XPT2046 touch panel or an SD card."""
-        return self.touch_kind.currentData() == "xpt2046" or self.sd_enabled.isChecked()
+        """MISO is shown (and used) only with an XPT2046 on the display's bus."""
+        if self.touch_kind.currentData() != "xpt2046":
+            return False
+        return not any(self.touch_pins[("xpt2046", f)].text().strip() for f in OWN_BUS)
 
     def _show_miso(self) -> None:
         needed = self.miso_needed()
@@ -565,50 +597,6 @@ class DisplayDialog(QDialog):
     def _suggest_miso(self) -> None:
         if not self.pins["miso"].text().strip():
             self.pins["miso"].setText(str(SUGGESTED_MISO))
-
-    def _build_sd(self, display: Display) -> QGroupBox:
-        sd = display.sd
-        box = QGroupBox("SD-карта")
-        box.setObjectName("sd_box")
-        form = QFormLayout(box)
-        self.sd_enabled = QCheckBox("Слот microSD на модулі")
-        self.sd_enabled.setObjectName("sd_enabled")
-        self.sd_enabled.setChecked(sd is not None)
-        self.sd_cs = QLineEdit("" if sd is None else str(sd.cs))
-        self.sd_cs.setObjectName("sd_cs")
-        self.sd_cs.setPlaceholderText("GPIO")
-        self.sd_cs.setMaximumWidth(70)
-        self.sd_mount = QLineEdit("/sd" if sd is None else sd.mount)
-        self.sd_mount.setObjectName("sd_mount")
-        self.sd_mount.setMaximumWidth(120)
-        hint = QLabel(
-            "SD_SCK, SD_MOSI, SD_MISO — на SCL, SDA і MISO дисплея (спільна шина SPI). "
-            "Картка має бути FAT32; на платі: ui_display.mount_sd(display)."
-        )
-        hint.setWordWrap(True)
-        hint.setEnabled(False)
-        form.addRow("", self.sd_enabled)
-        form.addRow("SD_CS", self.sd_cs)
-        form.addRow("Шлях на платі", self.sd_mount)
-        form.addRow(hint)
-        self.sd_rows = (self.sd_cs, self.sd_mount, hint)
-        for row in self.sd_rows:
-            form.setRowVisible(row, sd is not None)
-        self.sd_form = form
-        self.sd_enabled.toggled.connect(self._sd_toggled)
-        self.sd_cs.textChanged.connect(self._validate)
-        self.sd_mount.textChanged.connect(self._validate)
-        return box
-
-    def _sd_toggled(self, on: bool) -> None:
-        for row in self.sd_rows:
-            self.sd_form.setRowVisible(row, on)
-        if on:
-            if not self.sd_cs.text().strip():
-                self.sd_cs.setText(str(SUGGESTED_SD_CS))
-            self._suggest_miso()
-        self._show_miso()
-        self._validate()
 
     def _touch(self) -> tuple[Touch | None, list[str]]:
         kind = self.touch_kind.currentData()
@@ -628,19 +616,6 @@ class DisplayDialog(QDialog):
         for field, spin in self.calibration.items():
             values[field] = spin.value()
         return Touch.model_validate(values), errors
-
-    def _sd(self) -> tuple[SdCard | None, list[str]]:
-        if not self.sd_enabled.isChecked():
-            return None, []
-        cs, problem = parse_pin(self.sd_cs.text(), "SD_CS", False)
-        mount = self.sd_mount.text().strip()
-        errors = [problem] if problem else []
-        if not re.fullmatch(r"/[A-Za-z0-9_]{1,16}", mount):
-            errors.append("SD: шлях на платі — як /sd (латиниця, цифри, _)")
-            mount = "/sd"
-        if cs is None:
-            return None, errors
-        return SdCard(cs=cs, mount=mount), errors
 
     def _pins(self) -> tuple[dict[str, int | None], list[str]]:
         values: dict[str, int | None] = {}
@@ -673,7 +648,6 @@ class DisplayDialog(QDialog):
                 "driver": self.driver.currentData(),
                 "pins": Pins.model_validate(pins),
                 "touch": self._touch()[0],
-                "sd": self._sd()[0],
                 "buf_bytes": self._memory_bytes()[0],
                 "image_cache": self._memory_bytes()[1],
             }
@@ -681,7 +655,7 @@ class DisplayDialog(QDialog):
 
     def problems(self) -> list[str]:
         """All problems at once: missing numbers, then pins per chip, duplicates, driver."""
-        errors = self._pins()[1] + self._touch()[1] + self._sd()[1]
+        errors = self._pins()[1] + self._touch()[1]
         if errors:
             return errors
         out = []

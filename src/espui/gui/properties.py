@@ -40,7 +40,15 @@ from PySide6.QtWidgets import (
 
 from espui.assets.fonts import FONTS
 from espui.assets.images import ImageImportError
+from espui.core.arrange import (
+    ALIGN_TITLES,
+    DISTRIBUTE_TITLES,
+    Align,
+    align,
+    distribute,
+)
 from espui.core.compat import can_bind
+from espui.core.identifiers import identifier_problem
 from espui.core.issues import issues_from_validation_error
 from espui.core.models import (
     FONT_SIZE_TYPES,
@@ -162,6 +170,7 @@ class PropertiesPanel(QScrollArea):
         self.error.setObjectName("error")
         self.layout_.addWidget(self.error)
 
+        self._build_many()
         self._build_main()
         self._build_look()
         self._build_image()
@@ -182,6 +191,121 @@ class PropertiesPanel(QScrollArea):
         self.load()
 
     # ------------------------------------------------------------------ blocks
+    def _build_many(self) -> None:
+        """Several widgets selected: what applies to all of them at once."""
+        s = self.many = Section("Кілька елементів")
+        self.many_label = QLabel()
+        self.many_label.setObjectName("many_label")
+        self.many_label.setWordWrap(True)
+        self.many_color_button = QPushButton()
+        self.many_color_button.setObjectName("many_color_button")
+        self.many_color_button.clicked.connect(self._pick_many_color)
+        self.many_color_edit = QLineEdit()
+        self.many_color_edit.setObjectName("many_color")
+        self.many_color_edit.setMaximumWidth(90)
+        self.many_color_edit.setPlaceholderText("різні")
+        self.many_color_edit.editingFinished.connect(
+            lambda: self._set_many("color", self.many_color_edit.text().strip(), "Колір")
+        )
+        color = QWidget()
+        crow = QHBoxLayout(color)
+        crow.setContentsMargins(0, 0, 0, 0)
+        crow.addWidget(self.many_color_button)
+        crow.addWidget(self.many_color_edit)
+        self.many_opacity = QSpinBox()
+        self.many_opacity.setObjectName("many_opacity")
+        self.many_opacity.setRange(0, 100)
+        self.many_opacity.setSuffix(" %")
+        self.many_opacity.valueChanged.connect(
+            lambda v: self._set_many("opacity", v, "Непрозорість")
+        )
+        # Align / distribute, as in the "Розташування" menu.
+        arrange = QWidget()
+        arow = QHBoxLayout(arrange)
+        arow.setContentsMargins(0, 0, 0, 0)
+        arow.setSpacing(2)
+        self.arrange_buttons: dict[str, QToolButton] = {}
+        glyphs = {"left": "⇤", "hcenter": "⇹", "right": "⇥", "top": "⤒", "vcenter": "⇳",
+                  "bottom": "⤓", "horizontal": "⋯", "vertical": "⋮"}  # fmt: skip
+        titles: dict[str, str] = {str(k): v for k, v in ALIGN_TITLES.items()}
+        titles.update({str(k): v for k, v in DISTRIBUTE_TITLES.items()})
+        for key, glyph in glyphs.items():
+            button = QToolButton()
+            button.setObjectName(f"arrange_{key}")
+            button.setText(glyph)
+            button.setToolTip(titles[key])
+            button.clicked.connect(lambda _=False, k=key: self._arrange(k))
+            self.arrange_buttons[key] = button
+            arow.addWidget(button)
+        arow.addStretch(1)
+        self.many_delete = QPushButton("Видалити всі")
+        self.many_delete.setObjectName("many_delete")
+        self.many_delete.clicked.connect(lambda: self.doc.remove_widgets(self.doc.selected_ids))
+        s.form.addRow(self.many_label)
+        s.form.addRow("Колір", color)
+        s.form.addRow("Непрозорість", self.many_opacity)
+        s.form.addRow("Розташування", arrange)
+        s.form.addRow(self.many_delete)
+        self.layout_.addWidget(s)
+
+    def _arrange(self, key: str) -> None:
+        """Align (to the selection) or distribute (3+) the selected widgets."""
+        ids = self.doc.selected_ids
+        widgets = [w for w in self.doc.page.widgets if w.id in ids]
+        if key in DISTRIBUTE_TITLES:
+            if len(widgets) < 3:
+                self.message.emit("Розподілити: виберіть щонайменше три елементи")
+                return
+            self.doc.move_each(distribute(widgets, key), DISTRIBUTE_TITLES[key])
+            return
+        how = cast(Align, key)
+        self.doc.move_each(align(widgets, how, self.doc.project.display.size), ALIGN_TITLES[how])
+
+    def _set_many(self, field: str, value: object, text: str) -> None:
+        """A property for every selected widget (validated; one undo step)."""
+        ids = self.doc.selected_ids
+        if self._loading or len(ids) < 2:
+            return
+        if field == "color" and not value:
+            return  # "різні": left as they are
+        widgets = [w for w in self.doc.page.widgets if w.id in ids]
+        if all(getattr(w, field) == value for w in widgets):
+            return
+        try:
+            Widget.model_validate({**widgets[0].model_dump(), field: value})
+        except ValidationError as error:
+            self.error.setText("; ".join(i.message for i in issues_from_validation_error(error)))
+            self.load()
+            return
+        self.error.setText("")
+        self.doc.set_on_widgets(ids, field, value, f"{text}: {len(ids)} елементів")
+
+    def _pick_many_color(self) -> None:
+        widgets = [w for w in self.doc.page.widgets if w.id in self.doc.selected_ids]
+        if not widgets:
+            return
+        color = QColorDialog.getColor(QColor(widgets[0].color), self, "Колір")
+        if color.isValid():
+            self._set_many("color", color.name(), "Колір")
+
+    def _load_many(self, ids: list[str]) -> None:
+        widgets = [w for w in self.doc.page.widgets if w.id in ids]
+        shown = ", ".join(w.id for w in widgets[:6]) + (" …" if len(widgets) > 6 else "")
+        self.many_label.setText(
+            f"Вибрано {len(widgets)}: {shown}. Колір і непрозорість — для всіх одразу; "
+            "перетягування й стрілки рухають усі разом."
+        )
+        colors = {w.color for w in widgets}
+        color = colors.pop() if len(colors) == 1 else ""
+        self.many_color_edit.setText(color)
+        self.many_color_button.setStyleSheet(
+            f"background: {color}; min-width: 40px" if color else "min-width: 40px"
+        )
+        for key in DISTRIBUTE_TITLES:
+            self.arrange_buttons[key].setEnabled(len(widgets) >= 3)
+        opacities = {w.opacity for w in widgets}
+        self.many_opacity.setValue(opacities.pop() if len(opacities) == 1 else 100)
+
     def _build_main(self) -> None:
         s = self.main = Section("Властивості")
         self.id_edit = QLineEdit()
@@ -263,6 +387,15 @@ class PropertiesPanel(QScrollArea):
         self.size_spin.setRange(8, 72)
         self.size_spin.setSuffix(" px")
         self.size_spin.valueChanged.connect(lambda v: self.set_field("font_size", v))
+        self.on_tap_edit = QLineEdit()
+        self.on_tap_edit.setObjectName("on_tap")
+        self.on_tap_edit.setPlaceholderText("назва процедури, напр. start_pump")
+        self.on_tap_edit.setToolTip(
+            "Назва процедури, яку виконати при натиску на елемент\n"
+            "(потрібен сенсорний екран: Дисплей → Сенсорний екран). Самі процедури —\n"
+            'у коді на платі: ui.draw(p, actions={"назва": функція}) і ui.listen_touch().'
+        )
+        self.on_tap_edit.editingFinished.connect(self._on_tap_edited)
         self.delete_button = QPushButton("Видалити")
         self.delete_button.clicked.connect(lambda: self.doc.remove_widget())
 
@@ -277,6 +410,7 @@ class PropertiesPanel(QScrollArea):
         s.form.addRow("Формат / текст", self.format_edit)
         s.form.addRow("Шрифт", font)
         s.form.addRow("Шрифт, px", self.size_spin)
+        s.form.addRow("При натиску", self.on_tap_edit)
         s.form.addRow(self.delete_button)
         self.layout_.addWidget(s)
 
@@ -478,13 +612,19 @@ class PropertiesPanel(QScrollArea):
 
     def _load(self) -> None:
         widget = self.doc.widget
+        ids = self.doc.selected_ids
         self._loading = True
         try:
+            many = len(ids) > 1
             self.empty.setVisible(widget is None)
+            self.many.setVisible(many)
             for section in (self.main, self.look, self.image, self.chart, *self.placeholders):
-                section.setVisible(widget is not None)
+                section.setVisible(widget is not None and not many)
             if widget is None:
                 self.error.setText("")
+                return
+            if many:
+                self._load_many(ids)
                 return
             self._load_main(widget)
             self._load_look(widget)
@@ -513,6 +653,7 @@ class PropertiesPanel(QScrollArea):
         self.bind_combo.setCurrentIndex(max(0, self.bind_combo.findData(w.bind)))
         self.bind_combo.setEnabled(self.bind_combo.count() > 1)
         self.format_edit.setText(w.format)
+        self.on_tap_edit.setText(w.on_tap or "")
         scale = w.type in SCALE_TYPES
         for row in (self.track_row, self.show_track, self.show_value):
             self.main.form.setRowVisible(row, scale)
@@ -669,6 +810,18 @@ class PropertiesPanel(QScrollArea):
         color = QColorDialog.getColor(QColor(widget.color), self, "Колір")
         if color.isValid():
             self.set_field("color", color.name())
+
+    def _on_tap_edited(self) -> None:
+        """A Python function name, or empty (the widget doesn't react to taps)."""
+        widget = self.doc.widget
+        name = self.on_tap_edit.text().strip() or None
+        if self._loading or widget is None or name == widget.on_tap:
+            return
+        if name is not None and (problem := identifier_problem(name)):
+            self.error.setText(f"При натиску: «{name}» — {problem}")
+            self.on_tap_edit.setText(widget.on_tap or "")
+            return
+        self.set_field("on_tap", name, "При натиску")
 
     def _pick_track_color(self) -> None:
         widget = self.doc.widget

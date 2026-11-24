@@ -455,7 +455,8 @@ def test_display_checks(monkeypatch: pytest.MonkeyPatch) -> None:
     issues = check(display={"model": "ILI9341"})
     assert issues == [
         "display.model: невідомий дисплей «ILI9341»; "
-        "підтримуються: GC9A01-1.28, GMT020-02-8B, ILI9488-3.5"
+        "підтримуються: CYD-ILI9341, CYD-ST7789, GC9A01-1.28, GMT020-02-8B, ILI9341-3.2, "
+        "ILI9488-3.5, ST7789-3.2"
     ]
     assert check(display={"model": "ILI9488-3.5"}) == []
     assert check(display={"model": "custom", "custom": {"controller": "GC9A01"}}) == [

@@ -14,6 +14,7 @@ from PySide6.QtGui import QUndoCommand, QUndoStack
 
 from espui.assets.images import import_image
 from espui.core import serializer
+from espui.core.clipboard import copy_payload, paste
 from espui.core.compat import can_bind
 from espui.core.identifiers import identifier_problem, page_name_problem
 from espui.core.models import (
@@ -33,7 +34,7 @@ from espui.core.models import (
     WidgetType,
 )
 from espui.core.params import unused_parameters, update_parameter
-from espui.gui.widgets_catalog import new_widget
+from espui.gui.widgets_catalog import new_widget, shift_widget
 
 NEW_PAGE_NAME = "page"
 
@@ -59,14 +60,21 @@ class Document(QObject):
         self.path = path
         self.current = 0
         self.selected: str | None = None
-        """Id of the selected widget of the current page."""
+        """Id of the selected widget of the current page (the main one of a multi-selection)."""
+        self.also_selected: list[str] = []
+        """The other selected widgets (Shift+click, a frame, the layers)."""
         self.undo_stack = QUndoStack(self)
         self.undo_stack.indexChanged.connect(self._index_changed)
         self.undo_stack.cleanChanged.connect(self._clean_changed)
 
     def _index_changed(self, _index: int) -> None:
+        also = [i for i in self.also_selected if self.page.widget(i) is not None]
         if self.selected is not None and self.page.widget(self.selected) is None:
-            self.selected = None  # e.g. an added widget was undone
+            self.selected = also.pop(0) if also else None  # e.g. an added widget was undone
+            self.also_selected = also
+            self.selection_changed.emit()
+        elif also != self.also_selected:
+            self.also_selected = also
             self.selection_changed.emit()
         self.changed.emit()
 
@@ -80,6 +88,7 @@ class Document(QObject):
         self.path = path
         self.current = 0
         self.selected = None
+        self.also_selected = []
         self.undo_stack.clear()
         self.changed.emit()
         self.current_page_changed.emit(0)
@@ -120,6 +129,7 @@ class Document(QObject):
         if index != self.current:
             self.current = index
             self.selected = None
+            self.also_selected = []
             self.current_page_changed.emit(index)
             self.selection_changed.emit()
 
@@ -170,11 +180,41 @@ class Document(QObject):
         return self.page.widget(self.selected) if self.selected else None
 
     def select(self, widget_id: str | None) -> None:
+        """Select one widget (or none): a multi-selection ends."""
         if widget_id is not None and self.page.widget(widget_id) is None:
             widget_id = None
-        if widget_id != self.selected:
+        if widget_id != self.selected or self.also_selected:
             self.selected = widget_id
+            self.also_selected = []
             self.selection_changed.emit()
+
+    @property
+    def selected_ids(self) -> list[str]:
+        """Every selected widget, in layer order (the lowest first)."""
+        chosen = {self.selected, *self.also_selected} - {None}
+        return [w.id for w in self.page.widgets if w.id in chosen]
+
+    def select_many(self, ids: list[str], main: str | None = None) -> None:
+        """Select several widgets; ``main`` (or the topmost) shows in the properties."""
+        known = [i for i in ids if self.page.widget(i) is not None]
+        known = [w.id for w in self.page.widgets if w.id in set(known)]
+        if not known:
+            self.select(None)
+            return
+        main = main if main in known else known[-1]
+        also = [i for i in known if i != main]
+        if (main, also) != (self.selected, self.also_selected):
+            self.selected, self.also_selected = main, also
+            self.selection_changed.emit()
+
+    def toggle_selected(self, widget_id: str) -> None:
+        """Shift+click: add the widget to the selection, or take it out."""
+        ids = self.selected_ids
+        if widget_id in ids:
+            ids.remove(widget_id)
+            self.select_many(ids, self.selected if self.selected != widget_id else None)
+        else:
+            self.select_many([*ids, widget_id], widget_id)
 
     def index_of(self, widget_id: str) -> int:
         return next(i for i, w in enumerate(self.page.widgets) if w.id == widget_id)
@@ -183,6 +223,103 @@ class Document(QObject):
         """Add on top of the current page and select it."""
         self.undo_stack.push(_AddWidget(self, self.current, widget, len(self.page.widgets)))
         self.select(widget.id)
+
+    def copy_widget(self, widget_id: str | None = None) -> str | None:
+        """Clipboard text of the selection (or the given widget), with its parameters."""
+        ids = [widget_id] if widget_id else self.selected_ids
+        widgets = [w for w in self.page.widgets if w.id in ids]
+        return copy_payload(self.page, widgets) if widgets else None
+
+    def paste_widget(self, text: str) -> list[str]:
+        """Add copied widgets to the current page (one undo step) and select them.
+
+        Returns notes (parameters added or references dropped); raises ClipboardError.
+        """
+        pasted = paste(self.page, text)
+        names = ", ".join(f"«{i}»" for i in pasted.widget_ids)
+        self._replace_page(pasted.page, f"Вставити {names}")
+        self.select_many(pasted.widget_ids, pasted.widget_ids[-1])
+        return pasted.notes
+
+    def duplicate_widget(self, widget_id: str | None = None) -> list[str]:
+        """A copy of the selection right next to it."""
+        text = self.copy_widget(widget_id)
+        return self.paste_widget(text) if text is not None else []
+
+    def move_widgets(self, ids: list[str], dx: int, dy: int, text: str, merge: str = "") -> None:
+        """Move several widgets (and their x/y conditions and mappings) in one undo step."""
+        if not dx and not dy:
+            return
+        chosen = set(ids)
+        page = self.page.model_copy(deep=True)
+        page.widgets = [shift_widget(w, dx, dy) if w.id in chosen else w for w in page.widgets]
+        self._replace_page(page, text, merge)
+
+    def move_each(self, moves: dict[str, tuple[int, int]], text: str) -> bool:
+        """Move widgets by their own (dx, dy) — align / distribute — in one undo step."""
+        if not moves:
+            return False
+        page = self.page.model_copy(deep=True)
+        page.widgets = [shift_widget(w, *moves[w.id]) if w.id in moves else w for w in page.widgets]
+        self._replace_page(page, text)
+        return True
+
+    def remove_widgets(self, ids: list[str]) -> bool:
+        """Delete several widgets in one undo step."""
+        chosen = set(ids)
+        page = self.page.model_copy(deep=True)
+        page.widgets = [w for w in page.widgets if w.id not in chosen]
+        if len(page.widgets) == len(self.page.widgets):
+            return False
+        self._replace_page(page, f"Видалити елементи: {len(chosen)}")
+        self.select(None)
+        return True
+
+    def set_on_widgets(
+        self, ids: list[str], field: str, value: object, text: str, merge: str | None = None
+    ) -> None:
+        """One property (colour, opacity…) for several widgets in one undo step."""
+        chosen = set(ids)
+        page = self.page.model_copy(deep=True)
+        page.widgets = [
+            Widget.model_validate({**w.model_dump(), field: value}) if w.id in chosen else w
+            for w in page.widgets
+        ]
+        self._replace_page(page, text, merge=f"many:{field}" if merge is None else merge)
+
+    def toggle_flag(self, field: str, ids: list[str] | None = None) -> bool:
+        """👁 / 🔒 for ``ids`` (default: the selection): all on, or all off if all are on.
+
+        Editor only — the board draws the page the same. Hidden widgets leave the selection.
+        """
+        ids = self.selected_ids if ids is None else ids
+        widgets = [w for w in self.page.widgets if w.id in ids]
+        if not widgets:
+            return False
+        value = not all(getattr(w, field) for w in widgets)
+        what = {"editor_hidden": ("Сховати", "Показати"), "locked": ("Заблокувати", "Розблокувати")}
+        verb = what[field][0 if value else 1]
+        text = f"{verb}: {widgets[0].id}" if len(widgets) == 1 else f"{verb}: {len(widgets)}"
+        self.set_on_widgets([w.id for w in widgets], field, value, text, merge="")
+        if field == "editor_hidden" and value:
+            rest = [i for i in self.selected_ids if i not in ids]
+            if len(rest) > 1:
+                self.select_many(rest)
+            else:
+                self.select(rest[0] if rest else None)
+        return True
+
+    def unhide_all(self) -> bool:
+        """Every widget of the page shown and unlocked again (one undo step)."""
+        ids = [w.id for w in self.page.widgets if w.editor_hidden or w.locked]
+        if not ids:
+            return False
+        page = self.page.model_copy(deep=True)
+        page.widgets = [
+            w.model_copy(update={"editor_hidden": False, "locked": False}) for w in page.widgets
+        ]
+        self._replace_page(page, f"Показати й розблокувати: {len(ids)}")
+        return True
 
     def remove_widget(self, widget_id: str | None = None) -> bool:
         widget_id = widget_id or self.selected

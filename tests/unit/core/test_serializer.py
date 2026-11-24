@@ -65,6 +65,26 @@ def test_mockup_parameters_and_values(mockup_path: Path) -> None:
     assert page.test_values == {"temperature": 31.2, "status": "Увага"}
 
 
+def test_mockup_range_conditions_open_in_the_program(mockup_path: Path, tmp_path: Path) -> None:
+    """docs/plan.html stores a range as op "in" / "not in" and val [from, to]."""
+    data = json.loads(mockup_path.read_text("utf-8"))
+    page = data["pages"][0]
+    needle = next(w for w in page["W"] if w["id"] == "needle")
+    needle["rules"] = [
+        {"kind": "if", "param": "temperature", "op": "in", "val": [18, 25.5], "prop": "col",
+         "to": "#ff0000"},
+        {"kind": "if", "param": "temperature", "op": "not in", "val": [0, 30], "prop": "visible",
+         "to": "0"},
+    ]  # fmt: skip
+    path = tmp_path / "ranges.espui.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), "utf-8")
+    widget = {w.id: w for w in serializer.load(path).pages[0].widgets}["needle"]
+    assert [(c.when, c.prop, c.to) for c in widget.conditions()] == [
+        (("temperature", "in", (18, 25.5)), "color", "#ff0000"),
+        (("temperature", "not in", (0, 30)), "visible", False),
+    ]
+
+
 def test_mockup_widgets_and_rules(mockup_path: Path) -> None:
     page = serializer.load(mockup_path).pages[0]
     by_id = {w.id: w for w in page.widgets}

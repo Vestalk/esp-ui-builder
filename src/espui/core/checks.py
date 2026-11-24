@@ -24,6 +24,7 @@ from espui.core.compat import (
 )
 from espui.core.evaluate import format_problem
 from espui.core.hardware import CHIP_RULES, driver_drives, driver_supports
+from espui.core.identifiers import identifier_problem
 from espui.core.issues import Issue, Loc, ProjectValidationError, format_path
 from espui.core.models import (
     FONT_SIZE_TYPES,
@@ -123,16 +124,13 @@ def check_display(display: Display, loc: Loc = ("display",)) -> Iterator[Issue]:
                 f"({ram_w}×{ram_h})",
             )
     rules = CHIP_RULES[display.mcu]
-    # Every GPIO of the module: display, touch panel, SD card (one pin, one job).
+    # Every GPIO of the module: display and touch panel (one pin, one job).
     places: dict[str, Loc] = {n: (*loc, "pins", n) for n in display.pins.assigned()}
     assigned = dict(display.pins.assigned())
     if display.touch is not None:
         for name, gpio in display.touch.assigned().items():
             assigned[name] = gpio
             places[name] = (*loc, "touch", name.removeprefix("touch_"))
-    if display.sd is not None:
-        assigned["sd_cs"] = display.sd.cs
-        places["sd_cs"] = (*loc, "sd", "cs")
     used = Counter(assigned.values())
     for name, gpio in assigned.items():
         problem = rules.problem(gpio, input_only_ok=name in INPUT_PINS)
@@ -144,20 +142,24 @@ def check_display(display: Display, loc: Loc = ("display",)) -> Iterator[Issue]:
     yield from _check_extras(display, loc)
 
 
-INPUT_PINS = frozenset({"miso", "touch_irq"})
+INPUT_PINS = frozenset({"miso", "touch_irq", "touch_miso"})
 """Pins the board only reads: GPIO 34-39 of the ESP32 (input only) are fine for them."""
 
 
 def _check_extras(display: Display, loc: Loc) -> Iterator[Issue]:
-    """What a touch panel / an SD card on the module needs."""
-    touch, sd = display.touch, display.sd
-    needs_miso = [what for what, on in (("сенсор XPT2046", touch is not None and touch.kind
-                  == "xpt2046"), ("SD-карта", sd is not None)) if on]  # fmt: skip
-    if needs_miso and display.pins.miso is None:
-        yield _issue(
-            (*loc, "pins", "miso"),
-            f"вкажіть MISO: {' і '.join(needs_miso)} відповідають платі по ньому",
-        )
+    """What a touch panel on the module needs."""
+    touch = display.touch
+    if touch is not None and touch.kind == "xpt2046":
+        own = [touch.sck, touch.mosi, touch.miso]
+        if any(v is not None for v in own) and None in own:
+            yield _issue(
+                (*loc, "touch", "sck"),
+                "окрема шина сенсора: вкажіть усі три піни T_CLK, T_DIN, T_DO (або жодного)",
+            )
+        elif not touch.own_bus and display.pins.miso is None:
+            yield _issue(
+                (*loc, "pins", "miso"), "вкажіть MISO: сенсор XPT2046 відповідає платі по ньому"
+            )
     if touch is not None:
         if touch.kind == "xpt2046":
             if touch.cs is None:
@@ -284,6 +286,8 @@ def check_widget(
         if lo is not None and hi is not None and not lo < hi:
             issues.append(_issue((*loc, "chart", "y_max"), "y_max має бути більше за y_min"))
 
+    if widget.on_tap is not None and (problem := identifier_problem(widget.on_tap)):
+        issues.append(_issue((*loc, "on_tap"), f"«{widget.on_tap}»: {problem}"))
     for i, rule in enumerate(widget.rules):
         r_loc: Loc = (*loc, "rules", i)
         if isinstance(rule, Condition):

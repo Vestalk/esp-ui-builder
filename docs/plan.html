@@ -88,6 +88,8 @@ body.dragging,body.dragging *{cursor:grabbing!important;user-select:none}
 .rule{margin:0 8px 6px;padding:6px;border:1px solid var(--line);border-radius:6px;background:var(--bg);display:grid;gap:4px}
 .rl{display:grid;grid-template-columns:34px minmax(0,1.2fr) 48px minmax(0,1fr);gap:4px;align-items:center;font-size:12px;color:var(--mut)}
 .rl.b{grid-template-columns:34px minmax(0,1.2fr) minmax(0,1fr) 24px}
+.rl.ri{grid-template-columns:34px minmax(0,1fr) minmax(0,1.2fr)}
+.rl.rg{grid-template-columns:34px 18px minmax(0,1fr) 18px minmax(0,1fr)}
 .rl.m{grid-template-columns:34px minmax(0,1fr) minmax(0,1.1fr)}.rl.mb{grid-template-columns:34px minmax(0,1fr) minmax(0,1fr) 24px}
 .rule.map{border-style:dashed;border-color:var(--blue)}.rule .kind{font-size:11px;color:var(--mut);padding:0 2px}
 .grp.col>:not(.ph){display:none!important}.ph .pt{display:flex;align-items:center;gap:4px;cursor:pointer;user-select:none;min-width:0}
@@ -179,6 +181,8 @@ pre.st{margin:0 12px 12px;background:var(--soft);border-radius:6px;padding:8px 1
 <span>Тип</span><select id="p-type"></select>
 <span>x y w h</span><div class="xywh"><input id="p-x" type="number" aria-label="x"><input id="p-y" type="number" aria-label="y"><input id="p-w" type="number" aria-label="ширина"><input id="p-h" type="number" aria-label="висота"></div>
 <span>Колір</span><input id="p-col" type="color">
+<span class="sc-on">Доріжка</span><div class="sc-on" style="display:flex;gap:8px;align-items:center"><input id="p-trk" type="color" style="width:64px;flex:none" aria-label="Колір доріжки"><label style="display:flex;gap:4px;align-items:center;font-size:12px"><input id="p-strk" type="checkbox">Показувати доріжку</label></div>
+<span class="sc-on"></span><label class="sc-on" style="display:flex;gap:4px;align-items:center;font-size:12px"><input id="p-sval" type="checkbox">Показувати число</label>
 <span>Параметр</span><select id="p-bind"></select>
 <span>Формат</span><input id="p-fmt">
 <span class="ff-on">Шрифт</span><select class="ff-on" id="p-ff" aria-label="Шрифт"><option value="serif">Literata — з засічками (за замовчуванням)</option><option value="mono">JetBrains Mono — моноширинний</option><option value="pixel">Press Start 2P — піксельний</option></select>
@@ -321,7 +325,11 @@ W.push({id:'w_icon',type:'image',x:280,y:4,w:32,h:32,col:'#ffffff',fs:0,bind:'we
 W.push({id:'alarm_lbl',type:'text',x:200,y:188,w:110,h:22,col:'#ff4b55',fs:16,bind:'',fmt:'ПЕРЕГРІВ',rules:[{kind:'if',param:'alarm',op:'=',val:false,prop:'visible',to:'0'}]});
 W[1].rules=[{param:'alarm',op:'=',val:true,prop:'col',to:'#ff4b55'}];
 W.forEach(w=>{w.rules=w.rules||[];w.rules.forEach(r=>{r.kind=r.kind||'if'});if(!w.font)w.font='serif';if(w.op==null)w.op=100;if(w.rot==null)w.rot=0});
-const OPS=p=>!p?['=']:p.type==='bool'?['=']:(p.type==='enum'||p.type==='string')?['=','≠']:['>','<','≥','≤','=','≠'];
+const OPS=p=>!p?['=']:p.type==='bool'?['=']:(p.type==='enum'||p.type==='string')?['=','≠']:['>','<','≥','≤','=','≠','in','not in'];
+const OPL={'in':'у діапазоні','not in':'поза діапазоном'};
+const isRange=op=>op==='in'||op==='not in';
+// a value reshaped for the operator, as the program does: [from, to] for a range (from the value to the maximum), back to "from"
+function valFor(op,p,v){if(isRange(op)){if(Array.isArray(v))return v;const lo=typeof v==='number'?v:(p?p.min:0),hi=p&&p.max>=lo?p.max:lo;return [lo,hi]}return Array.isArray(v)?v[0]:v}
 const PROPS_IF=w=>[['col','колір']].concat(w.type==='text'||w.type==='value'?[['text','текст / формат']]:[],[['visible','видимість'],['alpha','непрозорість, %']],w.type==='chart'?[]:[['angle','кут, °']],[['x','x'],['y','y']]);
 const PROPS_MAP=w=>[['alpha','непрозорість, %']].concat(w.type==='chart'?[]:[['angle','кут, °']],[['x','x'],['y','y']]);
 const UNIT={alpha:' %',angle:'°',x:' px',y:' px'};
@@ -329,6 +337,7 @@ const dval=p=>!p?'':p.type==='bool'?true:p.type==='enum'?p.vals[0]:p.type==='str
 function dto(k,w){const g=w||{x:0,y:0};return k==='col'?'#ff4b55':k==='text'?'ТРИВОГА':k==='visible'?'0':k==='alpha'?30:k==='angle'?45:k==='x'?g.x+40:g.y+20}
 function dmap(k,w){const g=w;return k==='alpha'?[0,100]:k==='angle'?[-90,90]:k==='x'?[g.x,Math.max(0,Math.min(SW-w.w,g.x+100))]:[g.y,Math.max(0,Math.min(SH-w.h,g.y+60))]}
 function test(r){const p=pget(r.param);if(!p)return false;const v=V[p.name],x=r.val;
+  if(isRange(r.op)){const inside=typeof v==='number'&&Array.isArray(x)&&x[0]<=v&&v<=x[1];return r.op==='in'?inside:!inside}
   switch(r.op){case '=':return v===x;case '≠':return v!==x;case '>':return v>x;case '<':return v<x;case '≥':return v>=x;case '≤':return v<=x}return false}
 const PVP={c:[.5,.5],tl:[0,0],t:[.5,0],tr:[1,0],l:[0,.5],r:[1,.5],bl:[0,1],b:[.5,1],br:[1,1]};
 const PVN={c:'центр',tl:'лівий верхній кут',t:'середина верху',tr:'правий верхній кут',l:'середина лівого краю',r:'середина правого краю',bl:'лівий нижній кут',b:'середина низу',br:'правий нижній кут',custom:'власна'};
@@ -400,7 +409,7 @@ let nt;function note(t){const n=$('note');n.textContent=t;n.classList.add('on');
 
 function renderW(){return W.map(w0=>{const w=eff(w0),p=pget(w.bind),v=p?V[p.name]:null;const R=(()=>{
     if(w.type==='bar'){const f=p?Math.max(0,Math.min(1,(v-p.min)/(p.max-p.min))):.5;
-      return '<text x="'+w.x+'" y="'+(w.y+12)+'" fill="#8fa3ad" font-size="12" '+fa(w)+'>'+esc(w.fmt)+'</text><text x="'+(w.x+w.w)+'" y="'+(w.y+12)+'" fill="#fff" font-size="12" text-anchor="end" '+fa(w)+'>'+(p?(p.type==='float'?(+v).toFixed(1):v):'')+'</text><rect x="'+w.x+'" y="'+(w.y+w.h-16)+'" width="'+w.w+'" height="14" rx="3" fill="#23343f"/><rect x="'+w.x+'" y="'+(w.y+w.h-16)+'" width="'+(w.w*f).toFixed(1)+'" height="14" rx="3" fill="'+w.col+'"/>'}
+      return '<text x="'+w.x+'" y="'+(w.y+12)+'" fill="#8fa3ad" font-size="12" '+fa(w)+'>'+esc(w.fmt)+'</text><text x="'+(w.x+w.w)+'" y="'+(w.y+12)+'" fill="#fff" font-size="12" text-anchor="end" '+fa(w)+'>'+(p&&w.show_value!==false?(p.type==='float'?(+v).toFixed(1):v):'')+'</text>'+(w.show_track===false?'':'<rect x="'+w.x+'" y="'+(w.y+w.h-16)+'" width="'+w.w+'" height="14" rx="3" fill="'+(w.track_color||'#23343f')+'"/>')+'<rect x="'+w.x+'" y="'+(w.y+w.h-16)+'" width="'+(w.w*f).toFixed(1)+'" height="14" rx="3" fill="'+w.col+'"/>'}
     if(w.type==='rect')return '<rect x="'+w.x+'" y="'+w.y+'" width="'+w.w+'" height="'+w.h+'" rx="4" fill="'+w.col+'"/>';
     if(w.type==='circle')return '<ellipse cx="'+(w.x+w.w/2)+'" cy="'+(w.y+w.h/2)+'" rx="'+w.w/2+'" ry="'+w.h/2+'" fill="'+w.col+'"/>';
     if(w.type==='line')return '<line x1="'+w.x+'" y1="'+w.y+'" x2="'+(w.x+w.w)+'" y2="'+(w.y+w.h)+'" stroke="'+w.col+'" stroke-width="2" stroke-linecap="round"/>';
@@ -410,7 +419,7 @@ function renderW(){return W.map(w0=>{const w=eff(w0),p=pget(w.bind),v=p?V[p.name
       const msg=w.bind?(path?'немає '+path:'шлях порожній'):'виберіть файл';
       return '<rect x="'+w.x+'" y="'+w.y+'" width="'+w.w+'" height="'+w.h+'" fill="#13252f" stroke="'+(w.bind&&path?'#e0897f':'#56707c')+'" stroke-dasharray="3 2"/><text x="'+(w.x+w.w/2)+'" y="'+(w.y+w.h/2+3)+'" fill="'+(w.bind&&path?'#e0897f':'#8fa3ad')+'" font-size="8" text-anchor="middle" font-family="system-ui,sans-serif">'+esc(w.w<70&&msg.length>12?(w.bind&&path?'немає файлу':msg.split(' ')[0]):msg)+'</text>'}
     if(w.type==='arc'){const f=p?Math.max(0,Math.min(1,(v-p.min)/(p.max-p.min))):.6,r=Math.max(6,Math.min(w.w/2,w.h)-5),cx=w.x+w.w/2,cy=w.y+w.h-2,a=Math.PI*f,px=cx-r*Math.cos(a),py=cy-r*Math.sin(a);
-      return '<path d="M'+(cx-r)+' '+cy+' A'+r+' '+r+' 0 0 1 '+(cx+r)+' '+cy+'" fill="none" stroke="#23343f" stroke-width="7"/><path d="M'+(cx-r)+' '+cy+' A'+r+' '+r+' 0 0 1 '+px.toFixed(1)+' '+py.toFixed(1)+'" fill="none" stroke="'+w.col+'" stroke-width="7"/><text x="'+cx+'" y="'+(cy-4)+'" fill="#fff" font-size="'+w.fs+'" text-anchor="middle" '+fa(w)+'>'+(p?(p.type==='float'?(+v).toFixed(1):v):'')+'</text>'}
+      return (w.show_track===false?'':'<path d="M'+(cx-r)+' '+cy+' A'+r+' '+r+' 0 0 1 '+(cx+r)+' '+cy+'" fill="none" stroke="'+(w.track_color||'#23343f')+'" stroke-width="7"/>')+'<path d="M'+(cx-r)+' '+cy+' A'+r+' '+r+' 0 0 1 '+px.toFixed(1)+' '+py.toFixed(1)+'" fill="none" stroke="'+w.col+'" stroke-width="7"/><text x="'+cx+'" y="'+(cy-4)+'" fill="#fff" font-size="'+w.fs+'" text-anchor="middle" '+fa(w)+'>'+(p&&w.show_value!==false?(p.type==='float'?(+v).toFixed(1):v):'')+'</text>'}
     if(w.type==='chart'){const pts=p&&Array.isArray(v)?v:[],num=!p||p.xk==='num',X=w.xl||'',Y=w.yl||'',st=w.style||'line';
       const ys=pts.map(q=>q.y),fx=s=>s!==''&&s!=null&&Number.isFinite(+s);let lo=fx(w.ymin)?+w.ymin:(p?p.min:0),hi=fx(w.ymax)?+w.ymax:(p?p.max:10);
       if(!fx(w.ymin)&&ys.length)lo=Math.min(lo,...ys);if(!fx(w.ymax)&&ys.length)hi=Math.max(hi,...ys);if(hi<=lo)hi=lo+1;
@@ -456,6 +465,7 @@ function props(){const w=cur;
   $('p-bind').innerHTML='<option value="">— не прив\'язано</option>'+P.filter(p=>ok(w,p)).map(p=>'<option'+(p.name===w.bind?' selected':'')+'>'+esc(p.name)+'</option>').join('');
   $('p-fmt').value=w.fmt;$('p-fmt').disabled=!['text','value','bar'].includes(w.type);
   {const fon=['text','value','bar','arc','chart'].includes(w.type);document.querySelectorAll('.ff-on').forEach(x=>x.classList.toggle('hide',!fon));if(fon)$('p-ff').value=w.font||'serif';}
+  {const sc=w.type==='bar'||w.type==='arc';document.querySelectorAll('.sc-on').forEach(x=>x.classList.toggle('hide',!sc));if(sc){$('p-trk').value=w.track_color||'#23343f';$('p-strk').checked=w.show_track!==false;$('p-sval').checked=w.show_value!==false;$('p-trk').disabled=w.show_track===false}}
   {const FT=['text','value','bar','arc'],on=FT.includes(w.type);document.querySelectorAll('.fs-on').forEach(x=>x.classList.toggle('hide',!on));if(on){$('p-fs').value=w.fs||12;$('p-fs-h').textContent=''}$('e-fs').textContent=''}
   lookUI();syncXY();
   const ig=w.type==='image';$('imgp').classList.toggle('hide',!ig);$('e-i').textContent='';
@@ -542,6 +552,10 @@ $('p-type').addEventListener('change',e=>{const w=cur,t=e.target.value,old=w.typ
   w.fmt=t==='bar'?(w.bind?w.bind:'Підпис'):(t==='text'||t==='value')?(w.bind?defFmt(pget(w.bind)):(['text','value'].includes(old)?w.fmt:S.fmt)):'';
   all();note(msg)});
 $('p-col').addEventListener('input',e=>{cur.col=e.target.value;draw()});
+// bars and arcs: the number of the value and the fixed track it fills, as in the program
+$('p-trk').addEventListener('input',e=>{cur.track_color=e.target.value;draw()});
+$('p-strk').addEventListener('change',e=>{cur.show_track=e.target.checked;$('p-trk').disabled=!e.target.checked;draw()});
+$('p-sval').addEventListener('change',e=>{cur.show_value=e.target.checked;draw()});
 $('p-bind').addEventListener('change',e=>{cur.bind=e.target.value;const p=pget(cur.bind);if(p&&(cur.type==='text'||cur.type==='value')&&!/%/.test(cur.fmt))cur.fmt=defFmt(p);props();draw()});
 $('p-fmt').addEventListener('input',e=>{cur.fmt=e.target.value;draw()});
 $('tv').addEventListener('input',e=>{const n=e.target.dataset.n;if(!n)return;const p=pget(n);
@@ -794,16 +808,20 @@ function rulesUI(){const w=cur;$('e-rule').textContent='';
       '<div class="rl mb"><span class="kind">'+(p?p.min+'…'+p.max:'')+'</span><input data-k="a" type="number" step="any" value="'+esc(r.a)+'" aria-label="Значення при мінімумі"><input data-k="b" type="number" step="any" value="'+esc(r.b)+'" aria-label="Значення при максимумі"><button type="button" data-del="'+i+'" aria-label="Видалити залежність">×</button></div></div>'}
     const vc=!p?'<span></span>':p.type==='bool'?'<select data-k="val"><option value="1"'+(r.val?' selected':'')+'>true</option><option value="0"'+(!r.val?' selected':'')+'>false</option></select>'
       :p.type==='enum'?'<select data-k="val">'+p.vals.map(x=>'<option'+(x===r.val?' selected':'')+'>'+esc(x)+'</option>').join('')+'</select>'
+      :isRange(r.op)?''
       :'<input data-k="val" '+(isNum(p)?'type="number" step="any"':'')+' value="'+esc(r.val)+'">';
     const tc=r.prop==='col'?'<input type="color" data-k="to" value="'+esc(r.to)+'">':r.prop==='visible'?'<select data-k="to"><option value="1"'+(r.to==='1'?' selected':'')+'>показати</option><option value="0"'+(r.to==='0'?' selected':'')+'>сховати</option></select>'
       :r.prop==='text'?'<input data-k="to" value="'+esc(r.to)+'">':'<input data-k="to" type="number" step="any" value="'+esc(r.to)+'" aria-label="Значення'+(UNIT[r.prop]||'')+'">';
-    return '<div class="rule'+(test(r)?' on':'')+'" data-r="'+i+'"><div class="rl"><span>Якщо</span><select data-k="param" aria-label="Параметр умови">'+P.filter(x=>x.type!=='series').map(x=>'<option'+(x.name===r.param?' selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select><select data-k="op" aria-label="Порівняння">'+OPS(p).map(o=>'<option'+(o===r.op?' selected':'')+'>'+o+'</option>').join('')+'</select>'+vc+'</div>'+
+    const rg=isRange(r.op)?'<div class="rl rg"><span></span><span>від</span><input data-k="lo" type="number" step="any" value="'+esc(r.val[0])+'" aria-label="Від (включно)"><span>до</span><input data-k="hi" type="number" step="any" value="'+esc(r.val[1])+'" aria-label="До (включно)"></div>':'';
+    return '<div class="rule'+(test(r)?' on':'')+'" data-r="'+i+'"><div class="rl'+(isRange(r.op)?' ri':'')+'"><span>Якщо</span><select data-k="param" aria-label="Параметр умови">'+P.filter(x=>x.type!=='series').map(x=>'<option'+(x.name===r.param?' selected':'')+'>'+esc(x.name)+'</option>').join('')+'</select><select data-k="op" aria-label="Порівняння">'+OPS(p).map(o=>'<option value="'+o+'"'+(o===r.op?' selected':'')+'>'+(OPL[o]||o)+'</option>').join('')+'</select>'+vc+'</div>'+rg+
       '<div class="rl b"><span>то</span><select data-k="prop" aria-label="Що змінити">'+PROPS_IF(w).map(([k,l])=>'<option value="'+k+'"'+(k===r.prop?' selected':'')+'>'+l+'</option>').join('')+'</select>'+tc+'<button type="button" data-del="'+i+'" aria-label="Видалити умову">×</button></div></div>'}).join('')}
 function ruleEdit(e){const d=e.target.closest('[data-r]'),k=e.target.dataset.k;if(!d||!k)return;const r=cur.rules[+d.dataset.r],v=e.target.value;$('e-rule').textContent='';
   const num=x=>{const n=parseFloat(x);return Number.isFinite(n)?n:null};
   if(r.kind==='map'){if(k==='param')r.param=v;else if(k==='prop'){r.prop=v;[r.a,r.b]=dmap(v,cur)}else{const n=num(v);if(n==null){$('e-rule').textContent='Введіть число';return}if(r.prop==='alpha'&&(n<0||n>100)){$('e-rule').textContent='Непрозорість — від 0 до 100';return}r[k]=n}}
   else if(k==='param'){r.param=v;const p=pget(v);r.op=OPS(p)[0];r.val=dval(p)}
   else if(k==='val'){const p=pget(r.param);r.val=p.type==='bool'?v==='1':isNum(p)?parseFloat(v):v;if(isNum(p)&&!Number.isFinite(r.val))r.val=0}
+  else if(k==='op'){r.op=v;r.val=valFor(v,pget(r.param),r.val);rulesUI()}
+  else if(k==='lo'||k==='hi'){const n=num(v);if(n==null){$('e-rule').textContent='Введіть число';return}const b=r.val.slice();b[k==='lo'?0:1]=n;r.val=b;if(b[0]>b[1])$('e-rule').textContent='Діапазон: «від» ('+b[0]+') більше за «до» ('+b[1]+')'}
   else if(k==='prop'){r.prop=v;r.to=dto(v,cur)}
   else if(k==='to'&&!['col','text','visible'].includes(r.prop)){const n=num(v);if(n==null){$('e-rule').textContent='Введіть число';return}if(r.prop==='alpha'&&(n<0||n>100)){$('e-rule').textContent='Непрозорість — від 0 до 100';return}r.to=n}
   else r[k]=v;
@@ -811,7 +829,7 @@ function ruleEdit(e){const d=e.target.closest('[data-r]'),k=e.target.dataset.k;i
 $('rules').addEventListener('input',e=>{if(e.target.tagName==='INPUT')ruleEdit(e)});
 $('rules').addEventListener('change',ruleEdit);
 $('rules').addEventListener('click',e=>{const i=e.target.dataset.del;if(i==null)return;cur.rules.splice(+i,1);draw();rulesUI();lookUI(true);lockFields()});
-$('b-rule').addEventListener('click',()=>{const p=P.find(x=>x.type==='bool')||P.find(x=>x.type!=='series');if(!p){note('Спершу додайте параметр');return}
+$('b-rule').addEventListener('click',()=>{const p=P.find(x=>x.type!=='series');if(!p){note('Спершу додайте параметр');return}
   cur.rules.push({kind:'if',param:p.name,op:OPS(p)[0],val:dval(p),prop:'col',to:dto('col',cur)});draw();rulesUI();lockFields()});
 $('b-map').addEventListener('click',()=>{const p=P.find(isNum);if(!p){note('Для залежності потрібен числовий параметр (float або int)');return}
   const k=cur.type==='chart'?'x':'angle',[a,b]=dmap(k,cur);cur.rules.push({kind:'map',param:p.name,prop:k,a,b});draw();rulesUI();lookUI(true)});
@@ -820,7 +838,9 @@ const r565=c=>{const n=parseInt(c.slice(1),16),r=n>>16,g=n>>8&255,b=n&255;return
 function cond(r){const p=pget(r.param),f="p['"+r.param+"']";
   if(p.type==='bool')return (r.val?'':'not ')+f;
   if(p.type==='enum'||p.type==='string')return f+(r.op==='='?' == ':' != ')+pyv(r.val);
-  const op={'=':'==','≠':'!=','≥':'>=','≤':'<='}[r.op]||r.op;return f+' '+op+' '+(p.type==='float'?(+r.val).toFixed(1):Math.round(r.val))}
+  const n=x=>p.type==='float'?String(+x):String(Math.round(x));
+  if(isRange(r.op)){const inside=n(r.val[0])+' <= '+f+' <= '+n(r.val[1]);return r.op==='in'?inside:'not ('+inside+')'}
+  const op={'=':'==','≠':'!=','≥':'>=','≤':'<='}[r.op]||r.op;return f+' '+op+' '+n(r.val)}
 function wCode(w){const R=w.rules||[],maps=R.filter(r=>r.kind==='map'&&isNum(pget(r.param))),ifs=R.filter(r=>r.kind!=='map'&&pget(r.param));
   const used=k=>maps.some(r=>r.prop===k)||ifs.some(r=>r.prop===k),ch=w.type==='chart';
   const L=(p,a,b)=>a+" + ("+(b-a)+") * (p['"+p.name+"'] - "+p.min+") / "+(p.max-p.min);

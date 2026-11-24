@@ -820,6 +820,29 @@ def frame_path(folder, index):
     return "%s%03d.bin" % (folder, index)
 
 
+# ------------------------------------------------------------------ the shared bus
+_busy = [0]  # > 0 while something talks to the display's SPI bus (drawing, your own devices)
+
+
+class Busy:
+    """``with ui_draw.Busy(): ...`` — the touch timer waits while your code uses the bus.
+
+    Pages mark their own drawing; wrap your other work on the same SPI bus (an SD card
+    you added yourself, a second device) so a tap can't read the touch panel in the middle of it.
+    """
+
+    def __enter__(self):
+        _busy[0] += 1
+        return self
+
+    def __exit__(self, *_exc):
+        _busy[0] -= 1
+        return False
+
+
+RELEASE_POLLS = 2  # readings without a touch before the finger counts as lifted
+
+
 # ------------------------------------------------------------------ page engine
 _buffers = {}
 
@@ -861,8 +884,9 @@ class Page:
     DEFAULTS = {}
     USES_ALPHA = False
     ANIMS = ()  # (("id", loop), ...): widgets that can show an animation folder
+    TAPS = {}  # {"id": "function name"}: widgets that react to a tap ("При натиску")
 
-    def __init__(self, display, p=None, buf_bytes=None):
+    def __init__(self, display, p=None, buf_bytes=None, actions=None):
         global IMAGE_CACHE
         self.display = display
         self.p = dict(self.DEFAULTS) if p is None else p
@@ -888,6 +912,11 @@ class Page:
         self._boxes = [(wd[1], wd[2], wd[3], wd[4]) for wd in self.WIDGETS]
         self._strip = None  # (x, y, w, h, n, framebuffer) being drawn
         self._box = None  # box of the widget being drawn
+        self.actions = actions  # {"procedure name": function} (or globals() / a module)
+        self._touch = None
+        self._timer = None
+        self._pressed = False
+        self._up = 0
         # Animations: widget index -> [frame, last tick ms, playing, folder, loop]
         self._anim = {}
         self._anim_fns = {}
@@ -905,8 +934,14 @@ class Page:
             if fns[i] is not None:
                 self._boxes[i] = fns[i]()
 
-    def draw(self, p=None):
-        """Redraw the whole screen."""
+    def draw(self, p=None, actions=None):
+        """Redraw the whole screen.
+
+        ``actions``: {"procedure name": function} for the names set in the editor
+        ("При натиску"), e.g. {"start_pump": start_pump}; checked right away.
+        """
+        if actions is not None:
+            self.set_actions(actions)
         if p is not None:
             self.p = p
         self._refresh_boxes()
@@ -1029,8 +1064,136 @@ class Page:
             blend_rect(self._mv, self._layer, sw, x0, y0, x1, y1, level)
         _target[0] = self._mv[: self._strip[4]]  # back to drawing into the strip
 
+    # -------------------------------------------------------------- touch
+    def set_actions(self, actions):
+        """{"procedure name": function}: the procedures behind the editor's names.
+
+        Every name set in the editor ("При натиску") must be there: a missing one is
+        reported now, not at the first tap.
+        """
+        self.actions = actions
+        missing = self.missing_actions()
+        if missing:
+            raise ValueError("no procedure for: %s (add it to actions)" % ", ".join(missing))
+
+    def _action(self, name):
+        actions = self.actions
+        if actions is None:
+            return None
+        if isinstance(actions, dict):
+            return actions.get(name)
+        return getattr(actions, name, None)
+
+    def missing_actions(self):
+        """Procedure names set in the editor ("При натиску") but not found in ``actions``."""
+        names = []
+        for name in self.TAPS.values():
+            if self._action(name) is None and name not in names:
+                names.append(name)
+        return names
+
+    def hit(self, x, y):
+        """Id of the topmost widget reacting to a tap at (x, y), or None.
+
+        Uses the boxes as last drawn (moved / turned by conditions); a widget hidden
+        by a condition doesn't catch taps.
+        """
+        widgets = self.WIDGETS
+        boxes = self._boxes
+        for i in range(len(widgets) - 1, -1, -1):
+            wid = widgets[i][0]
+            if wid not in self.TAPS:
+                continue
+            bx, by, bw, bh = boxes[i]
+            if bx <= x < bx + bw and by <= y < by + bh:
+                shown = getattr(self, "_shown_" + wid, None)
+                if shown is None or shown():
+                    return wid
+        return None
+
+    def tap(self, x, y):
+        """Run the function of the widget at (x, y), then redraw what it changed."""
+        wid = self.hit(x, y)
+        if wid is None:
+            return None
+        fn = self._action(self.TAPS[wid])
+        if fn is None:
+            name = self.TAPS[wid]
+            raise ValueError("no procedure %r for %r: ui.draw(p, actions={...})" % (name, wid))
+        fn()
+        if self._prev is not None:
+            self.update()
+        return wid
+
+    def poll_touch(self, touch=None):
+        """One look at the touch panel: a new press runs its widget's function (once).
+
+        Returns the id of the tapped widget, or None. ``listen_touch()`` calls it from a
+        timer; call it yourself if you prefer your own loop.
+        """
+        touch = touch or self._touch
+        point = touch.read()
+        if point is None:
+            self._up += 1
+            if self._up >= RELEASE_POLLS:
+                self._pressed = False
+            return None
+        self._up = 0
+        if self._pressed:
+            return None  # still the same press
+        self._pressed = True
+        return self.tap(point[0], point[1])
+
+    def listen_touch(self, touch=None, period_ms=30, timer_id=0):
+        """React to taps in the background (a timer polls the panel): no loop needed.
+
+        ``touch``: from ui_display.create_touch(); created from the display settings if
+        omitted. Stop with stop_touch(). Tap functions should be short: while one runs,
+        the panel isn't read.
+        """
+        missing = self.missing_actions()
+        if missing:
+            raise ValueError(
+                "no procedure for: %s (ui.draw(p, actions={name: function}))" % ", ".join(missing)
+            )
+        if not self.TAPS:
+            raise ValueError('no widget has a procedure: set "При натиску" in the editor')
+        if touch is None:
+            import ui_display
+
+            touch = ui_display.create_touch(self.display)
+            if touch is None:
+                raise ValueError("the display has no touch panel (Дисплей → Сенсорний екран)")
+        self.stop_touch()
+        self._touch = touch
+        from machine import Timer
+
+        self._timer = Timer(timer_id)
+        self._timer.init(mode=Timer.PERIODIC, period=period_ms, callback=self._touch_tick)
+        return touch
+
+    def stop_touch(self):
+        if self._timer is not None:
+            self._timer.deinit()
+            self._timer = None
+
+    def _touch_tick(self, _timer):
+        if _busy[0]:
+            return  # the bus is in use: look again on the next tick
+        try:
+            self.poll_touch()
+        except Exception as e:  # keep listening after an error in a tap function
+            print("touch:", e)
+
     # -------------------------------------------------------------- rendering
     def _render(self, region):
+        _busy[0] += 1  # the touch timer must not read the panel between two strips
+        try:
+            self._render_strips(region)
+        finally:
+            _busy[0] -= 1
+
+    def _render_strips(self, region):
         x, y, w, h = region
         rows = len(self._buf) // (2 * w)
         if rows > h:

@@ -902,6 +902,8 @@ print("bytes", cleared, spi.data - cleared)
     [
         ({"model": "ILI9488-3.5", "rotation": 1}, (480, 320), 3),
         ({"model": "GC9A01-1.28"}, (240, 240), 2),
+        ({"model": "ILI9341-3.2", "rotation": 1}, (320, 240), 2),
+        ({"model": "ST7789-3.2", "rotation": 1}, (320, 240), 2),
     ],
 )
 def test_generated_page_drives_other_panels(
@@ -921,8 +923,9 @@ def test_generated_page_drives_other_panels(
         }
     )
     result = generate(project)
-    assert "ui_tft.py" in result.files
-    assert "ui_st7789.py" not in result.files
+    st7789 = project.display.profile.controller == "ST7789"
+    assert ("ui_st7789.py" in result.files) is st7789
+    assert ("ui_tft.py" in result.files) is not st7789
     result.write(tmp_path)
     proc = run_mpy(BOARD_SCRIPT.format(module="ui_main"))
     assert proc.returncode == 0, proc.stderr

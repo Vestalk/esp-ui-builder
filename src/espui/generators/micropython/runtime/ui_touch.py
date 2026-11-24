@@ -6,7 +6,9 @@
 #
 # * XPT2046 (resistive, most 3.5" ILI9488 modules): on the display's SPI bus with
 #   its own CS; read at 2 MHz (the bus is switched back to the display's speed
-#   afterwards). Raw 12-bit readings are calibrated with x_min/x_max/y_min/y_max:
+#   afterwards). Or on pins of its own (T_CLK / T_DIN / T_DO, e.g. the CYD board):
+#   then a software SPI of its own, the display's bus is not touched.
+#   Raw 12-bit readings are calibrated with x_min/x_max/y_min/y_max:
 #   the raw values at the left / right / top / bottom edges in portrait (give them
 #   the other way round to mirror an axis).
 # * CST816S (capacitive, round GC9A01 touch modules): on I2C, address 0x15.
@@ -78,7 +80,8 @@ class XPT2046:
         """Median raw (x, y, z1), or None if the panel isn't pressed."""
         if self._irq is not None and self._irq.value():
             return None  # T_IRQ is high while nothing touches the panel
-        self._spi.init(baudrate=XPT_HZ)
+        if self._bus_hz:  # the display's bus: slow it down for the panel
+            self._spi.init(baudrate=XPT_HZ)
         self._cs.value(0)
         try:
             z1 = self._channel(0xB1)
@@ -87,7 +90,8 @@ class XPT2046:
             self._channel(0x90)  # last conversion with power-down: T_IRQ works again
         finally:
             self._cs.value(1)
-            self._spi.init(baudrate=self._bus_hz)
+            if self._bus_hz:
+                self._spi.init(baudrate=self._bus_hz)
         if z1 < XPT_PRESSURE:
             return None
         return _median(xs), _median(ys), z1
@@ -153,7 +157,17 @@ def open_touch(settings, display, spi, bus_hz, rotation):
 
     irq = pin("irq", machine.Pin.IN)
     if settings["kind"] == "xpt2046":
-        if spi is None:
+        if settings.get("sck") is not None:  # pins of its own (the CYD): a bus of its own
+            spi = machine.SoftSPI(
+                baudrate=XPT_HZ,
+                polarity=0,
+                phase=0,
+                sck=machine.Pin(settings["sck"], machine.Pin.OUT),
+                mosi=machine.Pin(settings["mosi"], machine.Pin.OUT),
+                miso=machine.Pin(settings["miso"], machine.Pin.IN),
+            )
+            bus_hz = 0  # nothing to switch back
+        elif spi is None:
             raise ValueError("XPT2046 needs the display's SPI bus: create the display first")
         cs = machine.Pin(settings["cs"], machine.Pin.OUT, value=1)
         cal = (settings["x_min"], settings["x_max"], settings["y_min"], settings["y_max"])

@@ -396,6 +396,12 @@ class Widget(Model):
     """Bar / arc: colour of the fixed track the value fills."""
     show_track: bool = True
     """Bar / arc: draw the track (off: only the filled part shows)."""
+    on_tap: str | None = None
+    """Name of a function in the board code called when this widget is tapped (touch panel)."""
+    editor_hidden: bool = False
+    """Hidden in the editor only (👁 in "Шари"): not drawn there, still on the board."""
+    locked: bool = False
+    """Locked in the editor (🔒 in "Шари"): the canvas can't pick or move it."""
 
     @model_validator(mode="before")
     @classmethod
@@ -482,7 +488,7 @@ class Pins(Model):
     bl: int | None = Field(None, ge=0)
     """Backlight; None if the module has no BLK pin."""
     miso: int | None = Field(None, ge=0)
-    """Data back to the board: needed by an XPT2046 touch panel and an SD card on the bus."""
+    """Data back to the board: needed by an XPT2046 touch panel on the bus."""
 
     def assigned(self) -> dict[str, int]:
         return {
@@ -521,21 +527,27 @@ class Touch(Model):
     """Give min > max to mirror an axis."""
     swap_xy: bool = False
     """XPT2046: the panel's raw X runs along the long side."""
+    sck: int | None = Field(None, ge=0)
+    """XPT2046 on its own bus (T_CLK, e.g. the CYD); None = the display's SPI bus."""
+    mosi: int | None = Field(None, ge=0)
+    """XPT2046 own bus: T_DIN."""
+    miso: int | None = Field(None, ge=0)
+    """XPT2046 own bus: T_DO."""
+
+    @property
+    def own_bus(self) -> bool:
+        """XPT2046 wired to pins of its own, not to the display's bus."""
+        return self.kind == "xpt2046" and None not in (self.sck, self.mosi, self.miso)
 
     def assigned(self) -> dict[str, int]:
-        names = ("cs", "irq") if self.kind == "xpt2046" else ("sda", "scl", "irq", "rst")
+        names = (
+            ("cs", "irq", "sck", "mosi", "miso")
+            if self.kind == "xpt2046"
+            else ("sda", "scl", "irq", "rst")
+        )
         return {
             f"touch_{name}": value for name in names if (value := getattr(self, name)) is not None
         }
-
-
-class SdCard(Model):
-    """A microSD slot on the display module, on the display's SPI bus (needs MISO)."""
-
-    cs: int = Field(ge=0)
-    mount: str = Field("/sd", pattern=r"^/[A-Za-z0-9_]{1,16}$")
-    """Where the card appears in the board's file system."""
-    spi_hz: int = Field(20_000_000, ge=400_000, le=40_000_000)
 
 
 def _default_pins() -> Pins:
@@ -589,10 +601,17 @@ class Display(Model):
 
     custom: CustomPanel | None = None
     """The panel for ``model == "custom"`` ("Свій розмір")."""
+
+    @model_validator(mode="before")
+    @classmethod
+    def _drop_sd_card(cls, data: Any) -> Any:
+        """Projects of an earlier version could enable an SD card: now each project's own code."""
+        if isinstance(data, dict) and "sd" in data:
+            data = {k: v for k, v in data.items() if k != "sd"}
+        return data
+
     touch: Touch | None = None
     """A touch panel on the module; None (default) = a plain display."""
-    sd: SdCard | None = None
-    """A microSD slot on the module; None (default) = not used."""
     invert: bool | None = None
     """Colour inversion; None = as the display profile says."""
 

@@ -1,0 +1,20 @@
+# 3.2" IPS TFT SPI 240x320 with a resistive touch panel, ST7789 controller.
+model: ST7789-3.2
+title: '3.2" IPS TFT SPI 240×320 з сенсором (ST7789)'
+controller: ST7789
+width: 240
+height: 320
+color_format: RGB565
+interface: spi-4wire
+invert: true
+touch: xpt2046
+spi_hz:
+  default: 40000000
+  max: 80000000
+default_pins:
+  sck: 12
+  mosi: 11
+  dc: 9
+  cs: 10
+  rst: 8
+  bl: 7

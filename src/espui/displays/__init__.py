@@ -84,6 +84,13 @@ class DisplayProfile(BaseModel):
     """Colour order bit; None = the controller's usual one."""
     shape: Literal["rect", "round"] = "rect"
     """A round panel shows only the circle inscribed in its square."""
+    touch: Literal["xpt2046", "cst816s"] | None = None
+    """The touch panel modules of this model usually carry (suggested in "Дисплей")."""
+    board: str | None = None
+    """A board with the display built in (e.g. the CYD): its chip ("esp32"); choosing
+    the model sets the chip, the pins and the touch panel as wired on the board."""
+    touch_pins: dict[str, int | None] | None = None
+    """The touch panel's wiring on such a board (cs, irq, and sck/mosi/miso of its own bus)."""
 
     def size(self, rotation: int) -> tuple[int, int]:
         """Logical (width, height) for ``rotation`` 0-3."""

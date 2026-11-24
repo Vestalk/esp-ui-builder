@@ -8,6 +8,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any
 
+from espui.core.clipboard import shift_widget as shift_widget  # re-exported for the editor
 from espui.core.compat import can_bind, condition_props, mapping_props
 from espui.core.models import WIDGET_TYPES, Condition, MappingRule, Page, Widget, WidgetType
 
@@ -150,28 +151,6 @@ def controlled_props(widget: Widget) -> dict[str, list[str]]:
         if rule.param not in names:
             names.append(rule.param)
     return out
-
-
-def shift_widget(widget: Widget, dx: int, dy: int) -> Widget:
-    """Move the base position and every x/y value of its conditions and mappings together."""
-    if not dx and not dy:
-        return widget
-    rules: list[Condition | MappingRule] = []
-    for rule in widget.rules:
-        delta = dx if rule.prop == "x" else dy if rule.prop == "y" else 0
-        if not delta:
-            rules.append(rule)
-        elif isinstance(rule, MappingRule):
-            rules.append(
-                rule.model_copy(
-                    update={"at_min": rule.at_min + delta, "at_max": rule.at_max + delta}
-                )
-            )
-        elif isinstance(rule.to, int | float) and not isinstance(rule.to, bool):
-            rules.append(rule.model_copy(update={"to": rule.to + delta}))
-        else:
-            rules.append(rule)
-    return widget.model_copy(update={"x": widget.x + dx, "y": widget.y + dy, "rules": rules})
 
 
 def mapping_defaults(prop: str, widget: Widget, screen: tuple[int, int]) -> tuple[float, float]:

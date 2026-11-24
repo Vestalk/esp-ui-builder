@@ -1,6 +1,6 @@
 # 3.5" IPS TFT SPI 480x320, ILI9488 controller (the common red / black modules).
 model: ILI9488-3.5
-title: '3.5" IPS TFT SPI 480×320 (ILI9488)'
+title: '3.5" IPS HD TFT SPI 480×320 (ILI9488)'
 controller: ILI9488
 # Physical size in portrait orientation (rotation 0/2); 1/3 swap them.
 width: 320

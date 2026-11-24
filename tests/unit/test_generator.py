@@ -900,3 +900,17 @@ def test_sizing_without_conversion_matches() -> None:
     sized = generate(project, convert_images=False).files
     real = generate(project).files
     assert {n: len(d) for n, d in sized.items()} == {n: len(d) for n, d in real.items()}
+
+
+def test_spi_id_follows_the_pins_on_esp32() -> None:
+    """Classic ESP32: HSPI (14/13, the CYD) -> SPI(1), VSPI pins and others -> SPI(2)."""
+    from espui.core.hardware import Chip
+    from espui.core.models import Pins
+    from espui.generators.micropython.generator import spi_id
+
+    hspi = Pins.model_validate({"sck": 14, "mosi": 13, "dc": 2, "cs": 15, "rst": None, "bl": 21})
+    vspi = Pins.model_validate({"sck": 18, "mosi": 23, "dc": 2, "cs": 5, "rst": 4, "bl": 21})
+    assert spi_id(Chip.ESP32, hspi) == 1
+    assert spi_id(Chip.ESP32, vspi) == 2
+    assert spi_id(Chip.ESP32) == 2
+    assert spi_id(Chip.ESP32S3, hspi) == 1

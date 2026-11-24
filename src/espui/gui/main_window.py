@@ -11,7 +11,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QMimeData, QSettings, Qt, QTimer, Signal
-from PySide6.QtGui import QAction, QCloseEvent, QKeySequence, QResizeEvent
+from PySide6.QtGui import QAction, QCloseEvent, QGuiApplication, QKeySequence, QResizeEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDockWidget,
@@ -31,7 +31,17 @@ from PySide6.QtWidgets import (
 )
 
 from espui import __version__
+from espui.core.arrange import (
+    ALIGN_TITLES,
+    DISTRIBUTE_TITLES,
+    Align,
+    Distribute,
+    align,
+    distribute,
+)
 from espui.core.checks import check_project
+from espui.core.clipboard import MIME as CLIPBOARD_MIME
+from espui.core.clipboard import ClipboardError
 from espui.core.issues import ProjectError
 from espui.core.models import WIDGET_TYPES, EditorState
 from espui.generators.micropython.generator import GenerationError, generate
@@ -227,12 +237,41 @@ class MainWindow(QMainWindow):
             "Видалити елемент", self._delete_selected, QKeySequence(QKeySequence.StandardKey.Delete)
         )
         self.act_delete.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
+        # On the canvas and in the layers only: in a text field Ctrl+C / V copy text.
+        self.act_copy = self._action(
+            "Копіювати елемент", self.copy_widget, QKeySequence(QKeySequence.StandardKey.Copy)
+        )
+        self.act_paste = self._action(
+            "Вставити елемент", self.paste_widget, QKeySequence(QKeySequence.StandardKey.Paste)
+        )
+        self.act_duplicate = self._action("Дублювати елемент", self.duplicate_widget, "Ctrl+D")
+        for act in (self.act_copy, self.act_paste, self.act_duplicate):
+            act.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
         self.act_layer_up = self._action(
             "Шар вище", lambda: self.doc.raise_layer(step=1), "Ctrl+Up"
         )
         self.act_layer_down = self._action(
             "Шар нижче", lambda: self.doc.raise_layer(step=-1), "Ctrl+Down"
         )
+        self.act_hide = self._action(
+            "Сховати / показати в редакторі",
+            lambda: self._toggle_flag("editor_hidden"),
+            "Ctrl+Shift+H",
+        )
+        self.act_lock = self._action(
+            "Заблокувати / розблокувати", lambda: self._toggle_flag("locked"), "Ctrl+Shift+L"
+        )
+        self.act_unhide_all = self._action(
+            "Показати й розблокувати все на сторінці", self.unhide_all
+        )
+        self.act_align = {
+            how: self._action(title, lambda _=False, h=how: self.align_selected(h))
+            for how, title in ALIGN_TITLES.items()
+        }
+        self.act_distribute = {
+            how: self._action(title, lambda _=False, h=how: self.distribute_selected(h))
+            for how, title in DISTRIBUTE_TITLES.items()
+        }
         self.act_generate = self._action("▶ Згенерувати…", self.generate_dialog, "Ctrl+G")
         self.act_about = self._action("Про програму", self.about)
 
@@ -249,8 +288,28 @@ class MainWindow(QMainWindow):
         edit.addAction(self.act_undo)
         edit.addAction(self.act_redo)
         edit.addSeparator()
+        for act in (self.act_copy, self.act_paste, self.act_duplicate):
+            edit.addAction(act)
+        edit.addSeparator()
         for act in (self.act_delete, self.act_layer_up, self.act_layer_down):
             edit.addAction(act)
+        edit.addSeparator()
+        for act in (self.act_hide, self.act_lock, self.act_unhide_all):
+            edit.addAction(act)
+        for target in (self.workspace, self.layers):  # their keyboard shortcuts
+            target.addActions([self.act_copy, self.act_paste, self.act_duplicate])
+        arrange = bar.addMenu("Розташування")
+        aligns = list(self.act_align.values())  # left, centre, right; top, middle, bottom
+        for act in aligns[:3]:
+            arrange.addAction(act)
+        arrange.addSeparator()
+        for act in aligns[3:]:
+            arrange.addAction(act)
+        arrange.addSeparator()
+        for act in self.act_distribute.values():
+            arrange.addAction(act)
+        self.doc.selection_changed.connect(self._arrange_enabled)
+        self._arrange_enabled()
         view = bar.addMenu("Вигляд")
         for act in (
             self.act_zoom_in,
@@ -461,8 +520,97 @@ class MainWindow(QMainWindow):
         self.zoom_button.setText(f"{round(zoom * 100)} %")
 
     # ------------------------------------------------------------------ actions
+    def copy_widget(self) -> bool:
+        """The selected widget (with its parameters) to the clipboard."""
+        text = self.doc.copy_widget()
+        if text is None:
+            self.statusBar().showMessage("Спершу виберіть елемент", 4000)
+            return False
+        mime = QMimeData()
+        mime.setData(CLIPBOARD_MIME, QByteArray(text.encode("utf-8")))
+        mime.setText(text)
+        QGuiApplication.clipboard().setMimeData(mime)
+        ids = self.doc.selected_ids
+        what = f"«{ids[0]}»" if len(ids) == 1 else f"елементів: {len(ids)}"
+        self.statusBar().showMessage(f"Скопійовано {what}", 4000)
+        return True
+
+    def paste_widget(self) -> bool:
+        """A copied widget onto the current page (also from another page or window)."""
+        mime = QGuiApplication.clipboard().mimeData()
+        if mime.hasFormat(CLIPBOARD_MIME):
+            text = bytes(mime.data(CLIPBOARD_MIME).data()).decode("utf-8")
+        else:
+            text = mime.text()
+        return self._paste_text(text)
+
+    def duplicate_widget(self) -> bool:
+        text = self.doc.copy_widget()
+        if text is None:
+            self.statusBar().showMessage("Спершу виберіть елемент", 4000)
+            return False
+        return self._paste_text(text)
+
+    def _paste_text(self, text: str) -> bool:
+        try:
+            notes = self.doc.paste_widget(text)
+        except ClipboardError as error:
+            self.statusBar().showMessage(str(error), 5000)
+            return False
+        ids = self.doc.selected_ids
+        what = f"«{ids[0]}»" if len(ids) == 1 else f"елементів: {len(ids)}"
+        message = f"Вставлено {what}" + ("; " + "; ".join(notes) if notes else "")
+        self.statusBar().showMessage(message, 8000)
+        return True
+
+    def _toggle_flag(self, field: str) -> None:
+        """👁 / 🔒 for the selection (as the buttons in "Шари")."""
+        if not self.doc.toggle_flag(field):
+            self.statusBar().showMessage("Спершу виберіть елемент (на полотні або в «Шарах»)", 4000)
+
+    def unhide_all(self) -> bool:
+        """Every widget of the page shown and unlocked again (one undo step)."""
+        if not self.doc.unhide_all():
+            self.statusBar().showMessage("На сторінці немає схованих чи заблокованих", 4000)
+            return False
+        return True
+
+    def _arrange_enabled(self) -> None:
+        """Align: one widget (to the screen) or more; distribute: three or more."""
+        count = len(self.doc.selected_ids)
+        for act in self.act_align.values():
+            act.setEnabled(count >= 1)
+            act.setToolTip("" if count > 1 else "Один елемент вирівнюється відносно екрана")
+        for act in self.act_distribute.values():
+            act.setEnabled(count >= 3)
+
+    def align_selected(self, how: Align) -> bool:
+        ids = self.doc.selected_ids
+        widgets = [w for w in self.doc.page.widgets if w.id in ids]
+        moves = align(widgets, how, self.doc.project.display.size)
+        target = "екрана" if len(widgets) == 1 else "виділення"
+        if not self.doc.move_each(moves, ALIGN_TITLES[how]):
+            self.statusBar().showMessage(f"Уже вирівняно відносно {target}", 4000)
+            return False
+        return True
+
+    def distribute_selected(self, how: Distribute) -> bool:
+        ids = self.doc.selected_ids
+        if len(ids) < 3:
+            self.statusBar().showMessage("Розподілити: виберіть щонайменше три елементи", 4000)
+            return False
+        widgets = [w for w in self.doc.page.widgets if w.id in ids]
+        if not self.doc.move_each(distribute(widgets, how), DISTRIBUTE_TITLES[how]):
+            self.statusBar().showMessage("Проміжки вже однакові", 4000)
+            return False
+        return True
+
     def _delete_selected(self) -> None:
-        self.doc.remove_widget()
+        ids = self.doc.selected_ids
+        if len(ids) > 1:
+            self.doc.remove_widgets(ids)
+        else:
+            self.doc.remove_widget()
 
     def toggle_grid(self) -> None:
         self.workspace.grid = self.act_grid.isChecked()
@@ -583,8 +731,31 @@ class MainWindow(QMainWindow):
         folder = QFileDialog.getExistingDirectory(
             self, f"Де створити папку «{self.output_name()}»", str(start)
         )
-        if folder:
+        if folder and self.confirm_generate(Path(folder)):
             self.generate_to(Path(folder))
+
+    def confirm_generate(self, parent: Path) -> bool:
+        """ "Точно записати сюди?" — with the exact folder and whether files get replaced."""
+        target = parent / self.output_name()
+        existing = target.is_dir() and any(target.iterdir())
+        text = (
+            f"Файли сторінки буде записано в папку:\n{target}\n\n"
+            + (
+                "Ця папка вже існує: згенеровані раніше файли буде замінено новими, "
+                "старі файли попередньої генерації — видалено. Інші ваші файли в ній лишаться."
+                if existing
+                else "Папку буде створено."
+            )
+            + "\n\nПродовжити?"
+        )
+        answer = QMessageBox.question(
+            self,
+            "Згенерувати",
+            text,
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel if existing else QMessageBox.StandardButton.Yes,
+        )
+        return answer == QMessageBox.StandardButton.Yes
 
     def output_name(self) -> str:
         """Name of the folder the files go into: the page, or the project for several pages."""

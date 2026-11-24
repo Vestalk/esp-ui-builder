@@ -220,3 +220,33 @@ def test_memory_estimate_in_the_status_bar(qtbot: QtBot, tmp_path: Path) -> None
     win.doc.remove_widget("loading")
     qtbot.waitUntil(lambda: win.status_memory.text() != before, timeout=3000)
     assert "картинки 214" in win.status_memory.text()
+
+
+@pytest.mark.parametrize("answer", ["yes", "cancel"])
+def test_generation_asks_before_writing(
+    qtbot: QtBot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, answer: str
+) -> None:
+    from PySide6.QtWidgets import QFileDialog, QMessageBox
+
+    win = make_window(qtbot, tmp_path / "data")
+    win.open_file(IMAGES)
+    parent = tmp_path / "board"
+    parent.mkdir()
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", lambda *a, **k: str(parent))
+    asked: list[str] = []
+
+    def question(_parent: object, _title: str, text: str, *_a: object) -> object:
+        asked.append(text)
+        return (
+            QMessageBox.StandardButton.Yes if answer == "yes" else QMessageBox.StandardButton.Cancel
+        )
+
+    monkeypatch.setattr(QMessageBox, "question", question)
+    win.generate_dialog()
+    target = parent / win.output_name()
+    assert str(target) in asked[0]
+    assert "Папку буде створено" in asked[0]
+    assert target.is_dir() is (answer == "yes")  # nothing is written without "Yes"
+    if answer == "yes":
+        win.generate_dialog()  # again into the same folder: files will be replaced
+        assert "вже існує" in asked[1]

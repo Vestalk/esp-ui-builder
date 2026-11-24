@@ -29,7 +29,6 @@ ROTATIONS = (  # (MADCTL, width, height, x offset, y offset) per rotation
 BUF_BYTES = 16_384  # region buffer: one strip of what is redrawn
 IMAGE_CACHE = 0  # RAM for keeping pictures (0 = read from flash each time)
 TOUCH = None  # touch panel (ui_touch.py), None = none
-SD = None  # microSD card (ui_sd.py), None = none
 # -----------------------------------------------------------------------------
 
 _CONTROL_PINS = ("cs", "dc", "rst", "blk")
@@ -51,7 +50,7 @@ class Display:
         self.backlight = backlight
         self.buf_bytes = BUF_BYTES  # read by ui_draw.Page
         self.image_cache = IMAGE_CACHE
-        self.spi = None  # the bus, set by create(): the touch panel and SD card share it
+        self.spi = None  # the bus, set by create(): an XPT2046 touch panel shares it
 
 
 def check_area(x, y, w, h, width, height):
@@ -167,7 +166,7 @@ def make_bus(pins=PINS, spi_id=SPI_ID, spi_hz=SPI_HZ):
 
     polarity, phase = spi_mode(pins)
     extra = {}
-    if pins.get("miso") is not None:  # touch panel / SD card answer on it
+    if pins.get("miso") is not None:  # an XPT2046 touch panel answers on it
         extra["miso"] = machine.Pin(pins["miso"])
     spi = machine.SPI(
         spi_id,
@@ -183,7 +182,7 @@ def make_bus(pins=PINS, spi_id=SPI_ID, spi_hz=SPI_HZ):
         number = pins.get(name)
         out[name] = None if number is None else machine.Pin(number, machine.Pin.OUT, value=1)
     # CS lines of the other devices on the bus stay high (deselected) from the start.
-    for number in (_extra_cs(TOUCH), _extra_cs(SD)):
+    for number in (_extra_cs(TOUCH),):
         if number is not None:
             machine.Pin(number, machine.Pin.OUT, value=1)
     return spi, out
@@ -214,13 +213,3 @@ def create_touch(display, settings=None):
     import ui_touch
 
     return ui_touch.open_touch(settings, display, getattr(display, "spi", None), SPI_HZ, ROTATION)
-
-
-def mount_sd(display, settings=None):
-    """Mount the module's microSD card (ui_sd) at SD["mount"]; returns the path, or None."""
-    settings = SD if settings is None else settings
-    if not settings:
-        return None
-    import ui_sd
-
-    return ui_sd.mount(display.spi, settings, SPI_HZ)

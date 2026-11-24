@@ -18,7 +18,7 @@ import time
 from array import array
 from typing import cast
 
-from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -42,6 +42,7 @@ from PySide6.QtWidgets import (
     QGraphicsItem,
     QGraphicsScene,
     QGraphicsView,
+    QRubberBand,
     QStyleOptionGraphicsItem,
     QWidget,
 )
@@ -101,6 +102,11 @@ def canvas_to_image(canvas: Canvas) -> QImage:
     data = array("I", [table[v] for v in canvas.pixels]).tobytes()
     image = QImage(data, canvas.width, canvas.height, 4 * canvas.width, QImage.Format.Format_RGB32)
     return image.copy()  # own the pixels: ``data`` goes away
+
+
+def pickable(widget: Widget) -> bool:
+    """The canvas can pick / move it: not 🔒 locked and not 👁 hidden in the editor."""
+    return not (widget.locked or widget.editor_hidden)
 
 
 def snap(value: float, grid: int = GRID) -> int:
@@ -295,6 +301,8 @@ class PageItem(QGraphicsItem):
         self.pivot.setVisible(False)
         self.ghosts = Ghosts(self)
         self.ghosts.setVisible(False)
+        self.group_boxes: list[QRectF] = []
+        """Boxes of the other selected widgets (a multi-selection): dashed outlines."""
         self.hidden: list[QRectF] = []
         """Boxes of widgets hidden by conditions (outlined on the active page only)."""
         self.set_page(page, project)
@@ -309,6 +317,9 @@ class PageItem(QGraphicsItem):
             return
         self.fingerprint = fingerprint
         self.name = page.name
+        shown = [w for w in page.widgets if not w.editor_hidden]  # 👁: not drawn in the editor
+        if len(shown) != len(page.widgets):
+            page = page.model_copy(update={"widgets": shown})
         canvas = render_page(page, self.size, images=project.images, frames=frames)
         self.image = canvas_to_image(canvas)
         values = ParameterValues.for_page(page)
@@ -339,6 +350,13 @@ class PageItem(QGraphicsItem):
         w, h = self.size
         painter.setRenderHint(QPainter.RenderHint.SmoothPixmapTransform, False)
         painter.drawImage(QRectF(0, 0, w, h), self.image)
+        if self.active and self.group_boxes:  # the other widgets of a multi-selection
+            group_pen = QPen(theme.current().color("blue"), 1, Qt.PenStyle.DashLine)
+            group_pen.setCosmetic(True)
+            painter.setPen(group_pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            for rect in self.group_boxes:
+                painter.drawRect(rect)
         if self.active and self.hidden:  # hidden as on the board, but still findable
             hidden_pen = QPen(QColor(143, 163, 173, 150), 1, Qt.PenStyle.DashLine)
             hidden_pen.setCosmetic(True)
@@ -394,6 +412,10 @@ class _Gesture:
         """Angle the widget is drawn at: resizing works in its turned frame."""
         self.origin = origin
         """Effective top-left (with rules) when the gesture started."""
+        self.group: list[Widget] = []
+        """The other selected widgets moving along (a multi-selection)."""
+        self.shift = (0, 0)
+        """Where the group has moved so far (snapped like the dragged widget)."""
 
 
 class Workspace(QGraphicsView):
@@ -419,6 +441,9 @@ class Workspace(QGraphicsView):
         self.doc: Document | None = None
         self._gesture: _Gesture | None = None
         self._pan: QPoint | None = None
+        self._band: tuple[QPoint, bool] | None = None
+        """A selection frame being dragged: (start in the view, add to the selection)."""
+        self._rubber = QRubberBand(QRubberBand.Shape.Rectangle, self.viewport())
         self._anim_start: dict[tuple[str, str], float] = {}
         self._anim_timer = QTimer(self)
         self._anim_timer.setInterval(40)
@@ -488,6 +513,12 @@ class Workspace(QGraphicsView):
         item = self.active_item()
         if item is None or self.doc is None:
             return
+        group = self._gesture.group if self._gesture else []
+        dx, dy = self._gesture.shift if self._gesture else (0, 0)
+        others = group or [w for w in self.doc.page.widgets if w.id in self.doc.also_selected]
+        boxes = [self.widget_box(shift_widget(w, dx, dy) if group else w) for w in others]
+        item.group_boxes = [QRectF(x, y, max(w, 2), max(h, 2)) for x, y, w, h in boxes]
+        item.update()
         widget = self._gesture.current if self._gesture else self.doc.widget
         if widget is None:
             item.selection.set_box(None)
@@ -496,7 +527,10 @@ class Workspace(QGraphicsView):
             return
         e = effective(widget, ParameterValues.for_page(self.doc.page))
         item.selection.set_box(self.widget_box(widget), e.angle, e.pivot)
-        item.pivot.setVisible(widget.type != "chart")
+        free = pickable(widget)  # 🔒 / 👁: an outline only, no handles to pull
+        for handle in item.selection.handles.values():
+            handle.setVisible(free)
+        item.pivot.setVisible(free and widget.type != "chart")
         item.pivot.setPos(*e.pivot)
         item.ghosts.set_frames(self.mapping_frames(widget))
 
@@ -522,11 +556,19 @@ class Workspace(QGraphicsView):
         px, py = e.pivot
         return QTransform().translate(px, py).rotate(-e.angle).translate(-px, -py).map(point)
 
+    def locked_message(self) -> None:
+        window = self.window()
+        bar = getattr(window, "statusBar", None)
+        if callable(bar):
+            bar().showMessage("Елемент заблоковано (🔒 у «Шарах»): розблокуйте, щоб рухати", 4000)
+
     def widget_at(self, page_point: QPointF) -> Widget | None:
         """Top-most widget under a point (page pixels); thin widgets get a wider grab zone."""
         assert self.doc is not None
         grab = GRAB_PX / self.zoom
         for widget in reversed(self.doc.page.widgets):
+            if not pickable(widget):
+                continue
             x, y, w, h = self.widget_box(widget)
             pad_x = grab if w < THIN else 0.0
             pad_y = grab if h < THIN else 0.0
@@ -555,7 +597,7 @@ class Workspace(QGraphicsView):
         active = self.active_item()
         handle = self.itemAt(pos)
         grabbed = isinstance(handle, Handle | PivotHandle) and handle.role
-        if grabbed and active and self.doc and self.doc.widget:
+        if grabbed and active and self.doc and self.doc.widget and pickable(self.doc.widget):
             start = active.mapFromScene(self.mapToScene(pos))
             self._gesture = self._start(self.doc.widget, start, cast(str, handle.role))  # type: ignore[union-attr]
             return
@@ -570,9 +612,27 @@ class Workspace(QGraphicsView):
             return
         point = item.mapFromScene(self.mapToScene(pos))
         widget = self.widget_at(point)
-        self.doc.select(widget.id if widget else None)
-        if widget is not None:
+        shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
+        if widget is None:  # an empty place of the page: a selection frame
+            self._band = (pos, shift)
+            self._rubber.setGeometry(QRect(pos, QSize()))
+            self._rubber.show()
+            return
+        if shift:  # Shift+click: into the selection, or out of it
+            self.doc.toggle_selected(widget.id)
+            return
+        ids = self.doc.selected_ids
+        if widget.id in ids and len(ids) > 1:  # drag the whole selection
+            self.doc.select_many(ids, widget.id)  # the grabbed one leads (and snaps)
             self._gesture = self._start(widget, point, "")
+            self._gesture.group = [
+                w
+                for w in self.doc.page.widgets
+                if w.id in ids and w.id != widget.id and pickable(w)  # 🔒 ones stay put
+            ]
+            return
+        self.doc.select(widget.id)
+        self._gesture = self._start(widget, point, "")
 
     def _start(self, widget: Widget, point: QPointF, role: str) -> _Gesture:
         assert self.doc is not None
@@ -581,6 +641,9 @@ class Workspace(QGraphicsView):
 
     def mouseMoveEvent(self, event: QMouseEvent) -> None:
         pos = event.position().toPoint()
+        if self._band is not None:
+            self._rubber.setGeometry(QRect(self._band[0], pos).normalized())
+            return
         if self._pan is not None:
             delta = pos - self._pan
             self._pan = pos
@@ -596,7 +659,24 @@ class Workspace(QGraphicsView):
         free = bool(event.modifiers() & Qt.KeyboardModifier.AltModifier)
         gesture.current = self._dragged(gesture, dx, dy, free)
         page = self.doc.page.model_copy()
-        page.widgets = [gesture.current if w.id == gesture.widget.id else w for w in page.widgets]
+        if gesture.group:  # the others follow the dragged one, by the same (snapped) step
+            gesture.shift = (
+                gesture.current.x - gesture.widget.x,
+                gesture.current.y - gesture.widget.y,
+            )
+            moving = {w.id for w in gesture.group}
+            page.widgets = [
+                gesture.current
+                if w.id == gesture.widget.id
+                else shift_widget(w, *gesture.shift)
+                if w.id in moving
+                else w
+                for w in page.widgets
+            ]
+        else:
+            page.widgets = [
+                gesture.current if w.id == gesture.widget.id else w for w in page.widgets
+            ]
         item.set_page(page, self.doc.project, self._frames(page, self.doc.project))
         self.update_selection()
 
@@ -624,9 +704,17 @@ class Workspace(QGraphicsView):
 
     def mouseReleaseEvent(self, event: QMouseEvent) -> None:
         self._pan = None
+        if self._band is not None:
+            self._finish_band(event.position().toPoint())
+            return
         gesture, self._gesture = self._gesture, None
         if gesture is None or self.doc is None:
             super().mouseReleaseEvent(event)
+            return
+        if gesture.group:
+            ids = [gesture.widget.id, *(w.id for w in gesture.group)]
+            self.doc.move_widgets(ids, *gesture.shift, f"Перемістити елементи: {len(ids)}")
+            self.refresh()
             return
         if gesture.current != gesture.widget:
             text = {"": "Перемістити", "pivot": "Точка повороту"}.get(
@@ -636,14 +724,45 @@ class Workspace(QGraphicsView):
         else:
             self.refresh()
 
+    def _finish_band(self, pos: QPoint) -> None:
+        """Select the widgets the frame touches (with Shift: add them to the selection)."""
+        assert self._band is not None
+        start, add = self._band
+        self._band = None
+        self._rubber.hide()
+        item, doc = self.active_item(), self.doc
+        if item is None or doc is None:
+            return
+        frame = QRect(start, pos).normalized()
+        if frame.width() < 3 and frame.height() < 3:  # a click on an empty place
+            if not add:
+                doc.select(None)
+            return
+        a = item.mapFromScene(self.mapToScene(frame.topLeft()))
+        b = item.mapFromScene(self.mapToScene(frame.bottomRight()))
+        area = QRectF(a, b).normalized()
+        hit = []
+        for w in doc.page.widgets:
+            if not pickable(w):
+                continue
+            x, y, width, height = self.widget_box(w)
+            if area.intersects(QRectF(x, y, max(width, 1), max(height, 1))):
+                hit.append(w.id)
+        ids = [*doc.selected_ids, *hit] if add else hit
+        doc.select_many(ids, hit[-1] if hit else doc.selected)
+
     # ------------------------------------------------------------------ keyboard
     def keyPressEvent(self, event: QKeyEvent) -> None:
         doc = self.doc
         widget = doc.widget if doc else None
         key = event.key()
         if doc is not None and widget is not None:
+            ids = doc.selected_ids
             if key in (Qt.Key.Key_Delete, Qt.Key.Key_Backspace):
-                doc.remove_widget(widget.id)
+                if len(ids) > 1:
+                    doc.remove_widgets(ids)
+                else:
+                    doc.remove_widget(widget.id)
                 return
             steps = {
                 Qt.Key.Key_Left: (-1, 0),
@@ -657,6 +776,14 @@ class Workspace(QGraphicsView):
             ):
                 step = 10 if mods & Qt.KeyboardModifier.ShiftModifier else 1
                 dx, dy = steps[cast(Qt.Key, key)]
+                ids = [w.id for w in doc.page.widgets if w.id in ids and pickable(w)]
+                if not ids:  # 🔒 locked (or 👁 hidden): stays put
+                    self.locked_message()
+                    return
+                if len(ids) > 1:
+                    doc.move_widgets(ids, dx * step, dy * step, "Зсунути елементи", merge="nudge")
+                    return
+                widget = doc.page.widget(ids[0]) or widget
                 moved = shift_widget(widget, dx * step, dy * step)
                 doc.change_widget(moved, "Зсунути", merge="nudge")
                 return

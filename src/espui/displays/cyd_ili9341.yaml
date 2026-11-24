@@ -1,0 +1,29 @@
+# ESP32-2432S028R "Cheap Yellow Display": ESP32 + 2.8" 240x320 ILI9341 + XPT2046 touch.
+model: CYD-ILI9341
+title: 'ESP32 CYD 2.8" 240×320 з сенсором (ILI9341, ESP32-2432S028R)'
+controller: ILI9341
+invert: false
+width: 240
+height: 320
+color_format: RGB565
+interface: spi-4wire
+touch: xpt2046
+board: esp32
+spi_hz:
+  default: 40000000
+  max: 80000000
+# The display on HSPI (14/13: SPI(1) at full speed); RST is tied to the board's reset.
+default_pins:
+  sck: 14
+  mosi: 13
+  dc: 2
+  cs: 15
+  rst: null
+  bl: 21
+# The touch panel has a bus of its own on this board.
+touch_pins:
+  cs: 33
+  irq: 36
+  sck: 25
+  mosi: 32
+  miso: 39

@@ -8,7 +8,11 @@
 #   ui.draw(p)        # full redraw
 #   p[...] = ...
 #   ui.update(p)      # only what changed
-{% for param in parameters %}
+{% if taps %}
+#   ui.draw(p, actions={{ '{' }}{% for w in taps %}{{ w.tap | py }}: {{ w.tap }}{% if not loop.last %}, {% endif %}{% endfor %}{{ '}' }})
+#   ui.listen_touch()  # a tap on a widget runs its procedure
+
+{% endif %}{% for param in parameters %}
 #   ui.set_{{ param.name }}(value)
 {% endfor %}
 
@@ -36,6 +40,14 @@ class UI(_d.Page):
 {% endif %}
 {% if uses_alpha %}
     USES_ALPHA = True  # a second region buffer for translucent widgets
+{% endif %}
+{% if taps %}
+    # Widget -> procedure name ("При натиску"); the procedures: ui.draw(p, actions={...}).
+    TAPS = {
+{% for w in taps %}
+        {{ w.id | py }}: {{ w.tap | py }},
+{% endfor %}
+    }
 {% endif %}
     # (id, x, y, w, h, parameters) in layer order: the first one is the lowest.
     WIDGETS = (
@@ -68,6 +80,13 @@ class UI(_d.Page):
 
     def _anim_{{ w.id }}(self):
 {% for line in w.anim %}
+        {{ line }}
+{% endfor %}
+{% endif %}
+{% if w.shown %}
+
+    def _shown_{{ w.id }}(self):
+{% for line in w.shown %}
         {{ line }}
 {% endfor %}
 {% endif %}

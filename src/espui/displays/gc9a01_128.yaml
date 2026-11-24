@@ -1,6 +1,6 @@
 # 1.28" round TFT SPI 240x240, GC9A01 controller.
 model: GC9A01-1.28
-title: '1.28" круглий TFT SPI 240×240 (GC9A01)'
+title: '1.28" круглий IPS TFT 240×240 (GC9A01)'
 controller: GC9A01
 width: 240
 height: 240

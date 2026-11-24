@@ -7,7 +7,7 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QPoint, QPointF, Qt
 from PySide6.QtGui import QWheelEvent
-from PySide6.QtWidgets import QDialogButtonBox, QGraphicsItem
+from PySide6.QtWidgets import QDialogButtonBox, QGraphicsItem, QGroupBox
 from pytestqt.qtbot import QtBot
 
 from espui.core import serializer
@@ -108,7 +108,16 @@ def ok_enabled(dialog: DisplayDialog) -> bool:
 
 def test_dialog_defaults(dialog: DisplayDialog) -> None:
     models = [dialog.model.itemData(i) for i in range(dialog.model.count())]
-    assert models == ["GC9A01-1.28", "GMT020-02-8B", "ILI9488-3.5", "custom"]
+    assert models == [
+        "CYD-ILI9341",
+        "CYD-ST7789",
+        "GC9A01-1.28",
+        "GMT020-02-8B",
+        "ILI9341-3.2",
+        "ILI9488-3.5",
+        "ST7789-3.2",
+        "custom",
+    ]
     assert dialog.model.currentData() == "GMT020-02-8B"
     assert not dialog.custom_box.isVisibleTo(dialog)
     assert dialog.invert.isChecked()  # the GMT020 profile inverts
@@ -157,46 +166,38 @@ def test_dialog_module_without_cs_and_reset(dialog: DisplayDialog) -> None:
     assert (pins.cs, pins.rst) == (None, None)
 
 
-def test_dialog_touch_and_sd_are_off_by_default(dialog: DisplayDialog) -> None:
+def test_dialog_touch_is_off_by_default(dialog: DisplayDialog) -> None:
     display = dialog.display()
-    assert (display.touch, display.sd, display.pins.miso) == (None, None, None)
+    assert (display.touch, display.pins.miso) == (None, None)
     assert dialog.touch_kind.currentData() is None
-    assert not dialog.sd_enabled.isChecked()
+    assert dialog.findChild(QGroupBox, "sd_box") is None  # an SD card is the project's own code
 
 
 def test_dialog_miso_only_when_needed(dialog: DisplayDialog) -> None:
     assert not dialog.pins["miso"].isVisibleTo(dialog)  # a plain display: no MISO
-    dialog.sd_enabled.setChecked(True)
-    assert dialog.pins["miso"].isVisibleTo(dialog)
-    assert dialog.pin_labels["miso"].isVisibleTo(dialog)
-    assert "сенсора XPT2046 і SD-карти" in dialog.pins["miso"].toolTip()
-    dialog.sd_enabled.setChecked(False)
-    assert not dialog.pins["miso"].isVisibleTo(dialog)
-    assert dialog.display().pins.miso is None  # hidden: not used
     dialog.touch_kind.setCurrentIndex(dialog.touch_kind.findData("cst816s"))
     assert not dialog.pins["miso"].isVisibleTo(dialog)  # I2C touch: no MISO either
     dialog.touch_kind.setCurrentIndex(dialog.touch_kind.findData("xpt2046"))
     assert dialog.pins["miso"].isVisibleTo(dialog)
+    assert dialog.pin_labels["miso"].isVisibleTo(dialog)
+    assert "XPT2046" in dialog.pins["miso"].toolTip()
     assert dialog.display().pins.miso == 13
+    dialog.touch_kind.setCurrentIndex(dialog.touch_kind.findData(None))
+    assert dialog.display().pins.miso is None  # hidden: not used
 
 
-def test_dialog_xpt2046_touch_and_sd_card(dialog: DisplayDialog) -> None:
+def test_dialog_xpt2046_touch(dialog: DisplayDialog) -> None:
     dialog.touch_kind.setCurrentIndex(dialog.touch_kind.findData("xpt2046"))
-    dialog.sd_enabled.setChecked(True)
     display = dialog.display()
     assert display.touch is not None
     assert (display.touch.kind, display.touch.cs, display.touch.irq) == ("xpt2046", 14, 15)
-    assert display.sd is not None
-    assert (display.sd.cs, display.sd.mount) == (21, "/sd")
-    assert display.pins.miso == 13  # suggested: touch and card answer on it
+    assert display.pins.miso == 13  # suggested: the panel answers on it
     assert dialog.problems() == []
     dialog.pins["miso"].setText("")
-    assert dialog.problems() == [
-        "MISO: вкажіть MISO: сенсор XPT2046 і SD-карта відповідають платі по ньому"
-    ]
+    assert dialog.problems() == ["MISO: вкажіть MISO: сенсор XPT2046 відповідає платі по ньому"]
     dialog.pins["miso"].setText("13")
-    dialog.sd_cs.setText("14")  # the touch panel's T_CS
-    assert any("SD_CS: GPIO14 вже використано для touch_cs" in p for p in dialog.problems())
+    dialog.touch_pins[("xpt2046", "cs")].setText("10")  # the display's CS
+    assert any("GPIO10 вже використано" in p for p in dialog.problems())
 
 
 def test_dialog_cst816s_touch(dialog: DisplayDialog) -> None:
@@ -210,11 +211,10 @@ def test_dialog_cst816s_touch(dialog: DisplayDialog) -> None:
     assert dialog.problems() == ["Сенсор SDA: вкажіть SDA сенсора (I2C)"]
 
 
-def test_dialog_reopens_touch_and_sd(qtbot: QtBot) -> None:
+def test_dialog_reopens_touch(qtbot: QtBot) -> None:
     display = Display(
         pins={"sck": 12, "mosi": 11, "dc": 9, "cs": 10, "rst": 8, "bl": 7, "miso": 13},
         touch={"kind": "xpt2046", "cs": 4, "x_min": 3800, "x_max": 300, "swap_xy": True},
-        sd={"cs": 5, "mount": "/card"},
     )
     dialog = DisplayDialog(display)
     qtbot.addWidget(dialog)
@@ -261,6 +261,30 @@ def test_dialog_ili9488(dialog: DisplayDialog) -> None:
     row = dialog.driver.findData("st7789py")
     assert not dialog.driver.model().item(row).isEnabled()  # type: ignore[attr-defined]
     assert dialog.display().driver.value == "builtin"
+
+
+@pytest.mark.parametrize(("model", "inverted"), [("ILI9341-3.2", False), ("ST7789-3.2", True)])
+def test_dialog_32_inch_touch_modules(dialog: DisplayDialog, model: str, inverted: bool) -> None:
+    """3.2" modules carry an XPT2046: choosing one offers it (with MISO), it can be switched off."""
+    dialog.model.setCurrentIndex(dialog.model.findData(model))
+    assert dialog.rotation.itemText(1) == "1 — альбом 320×240"
+    assert dialog.invert.isChecked() is inverted
+    assert dialog.touch_kind.currentData() == "xpt2046"
+    assert dialog.pins["miso"].isVisibleTo(dialog)
+    display = dialog.display()
+    assert display.touch is not None
+    assert (display.model, display.pins.miso, display.touch.cs) == (model, 13, 14)
+    assert dialog.problems() == []
+    dialog.touch_kind.setCurrentIndex(dialog.touch_kind.findData(None))  # a module without one
+    assert dialog.display().touch is None
+    dialog.rotation.setCurrentIndex(1)  # other edits do not offer it again
+    assert dialog.display().touch is None
+
+
+def test_dialog_reopened_touch_module_keeps_touch_off(qtbot: QtBot) -> None:
+    dialog = DisplayDialog(Display(model="ILI9341-3.2"))  # saved without the touch panel
+    qtbot.addWidget(dialog)
+    assert dialog.display().touch is None
 
 
 def test_dialog_round_and_inversion_override(dialog: DisplayDialog) -> None:
@@ -421,6 +445,7 @@ def test_window_opens_two_pages(window: MainWindow) -> None:
     assert menus == [
         "Файл",
         "Правка",
+        "Розташування",
         "Вигляд",
         "Дисплей",
         "Сторінки",
@@ -510,3 +535,43 @@ def test_scale_number_and_track_controls(window: MainWindow) -> None:
     widget = window.doc.page.widget("h_bar")
     assert widget is not None
     assert widget.show_track
+
+
+# ------------------------------------------------------------------ taps
+def test_on_tap_field(window: MainWindow) -> None:
+    window.open_file(ROOT / "examples" / "weather.espui")
+    props = window.properties
+    window.doc.select("card")
+    assert props.on_tap_edit.text() == ""
+    props.on_tap_edit.setText("open_settings")
+    props.on_tap_edit.editingFinished.emit()
+    widget = window.doc.page.widget("card")
+    assert widget is not None
+    assert widget.on_tap == "open_settings"
+    props.on_tap_edit.setText("open settings")  # not a Python name: refused, explained
+    props.on_tap_edit.editingFinished.emit()
+    assert "При натиску: «open settings»" in props.error.text()
+    assert props.on_tap_edit.text() == "open_settings"
+    props.on_tap_edit.setText("")  # empty: the widget no longer reacts to taps
+    props.on_tap_edit.editingFinished.emit()
+    widget = window.doc.page.widget("card")
+    assert widget is not None
+    assert widget.on_tap is None
+
+
+def test_dialog_cyd_board_sets_its_wiring(dialog: DisplayDialog) -> None:
+    """ESP32 CYD: the chip, the display pins and the touch panel's own bus, as on the board."""
+    dialog.model.setCurrentIndex(dialog.model.findData("CYD-ILI9341"))
+    display = dialog.display()
+    assert display.mcu.value == "esp32"
+    pins = display.pins
+    assert (pins.sck, pins.mosi, pins.dc, pins.cs, pins.rst, pins.bl) == (14, 13, 2, 15, None, 21)
+    touch = display.touch
+    assert touch is not None
+    assert touch.own_bus
+    assert (touch.cs, touch.irq, touch.sck, touch.mosi, touch.miso) == (33, 36, 25, 32, 39)
+    assert pins.miso is None  # the panel answers on its own T_DO
+    assert not dialog.pins["miso"].isVisibleTo(dialog)
+    assert dialog.problems() == []
+    dialog.touch_pins[("xpt2046", "mosi")].setText("")  # half of a bus
+    assert any("T_CLK, T_DIN, T_DO" in p for p in dialog.problems())

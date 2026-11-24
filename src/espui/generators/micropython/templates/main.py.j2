@@ -9,12 +9,26 @@ import ui_display
 import {{ pg.module }}
 {% endfor %}
 
-d = ui_display.create()
-{% if touch %}
-touch = ui_display.create_touch(d)  # touch.read(): (x, y) or None
+{% if actions %}
+
+# Called when a widget is tapped ("При натиску" in the editor): put your code here.
+{% for name in actions %}
+def {{ name }}():
+    print("tap: {{ name }}")
+
+
+{% endfor %}
+# The editor names the procedure of each button ("При натиску"); here are the procedures.
+ACTIONS = {
+{% for name in actions %}
+    {{ name | py }}: {{ name }},
+{% endfor %}
+}
+
 {% endif %}
-{% if sd %}
-print("SD card:", ui_display.mount_sd(d))  # files: open("{{ sd }}/name.txt")
+d = ui_display.create()
+{% if poll_touch %}
+touch = ui_display.create_touch(d)  # touch.read(): (x, y) or None
 {% endif %}
 pages = {
 {% for pg in pages %}
@@ -23,15 +37,29 @@ pages = {
 }
 current = {{ pages[0].page.name | py }}
 ui, p = pages[current]
+{% if actions %}
+ui.draw(p, actions=ACTIONS)
+ui.listen_touch()  # taps run the procedures in the background
+{% else %}
 ui.draw(p)
+{% endif %}
 
 
 def show(name):
     """Switch to page ``name`` and draw it completely."""
     global current, ui, p
+{% if actions %}
+    ui.stop_touch()
+{% endif %}
     current = name
     ui, p = pages[name]
+{% if actions %}
+    ui.draw(p, actions=ACTIONS)
+    if ui.TAPS:
+        ui.listen_touch()
+{% else %}
     ui.draw(p)
+{% endif %}
 
 
 # Demo: the next page every 5 s; in between the current page animates (tick) and updates.
@@ -39,7 +67,7 @@ order = list(pages)
 last = time.ticks_ms()
 while True:
     ui.tick()
-{% if touch %}
+{% if poll_touch %}
     point = touch.read()
     if point:
         print("touch", point)
@@ -59,20 +87,41 @@ import time
 
 import ui_display
 import {{ module }}
+{% if actions %}
 
-{% if touch or sd %}
+
+# Called when a widget is tapped ("При натиску" in the editor): put your code here.
+{% for name in actions %}
+def {{ name }}():
+    print("tap: {{ name }}")
+
+
+{% endfor %}
+# The editor names the procedure of each button ("При натиску"); here are the procedures.
+ACTIONS = {
+{% for name in actions %}
+    {{ name | py }}: {{ name }},
+{% endfor %}
+}
+
+{% else %}
+
+{% endif %}
+{% if touch or actions %}
 display = ui_display.create()
 ui = {{ module }}.UI(display)
 {% else %}
 ui = {{ module }}.UI(ui_display.create())
 {% endif %}
 p = dict({{ module }}.DEFAULTS)
+{% if actions %}
+ui.draw(p, actions=ACTIONS)
+ui.listen_touch()  # taps run the procedures in the background: no loop needed for them
+{% else %}
 ui.draw(p)
-{% if touch %}
-touch = ui_display.create_touch(display)  # touch.read(): (x, y) or None
 {% endif %}
-{% if sd %}
-print("SD card:", ui_display.mount_sd(display))  # files: open("{{ sd }}/name.txt")
+{% if poll_touch %}
+touch = ui_display.create_touch(display)  # touch.read(): (x, y) or None
 {% endif %}
 
 {% if anims %}
@@ -80,7 +129,7 @@ print("SD card:", ui_display.mount_sd(display))  # files: open("{{ sd }}/name.tx
 last = time.ticks_ms()
 while True:
     ui.tick()
-{% if touch %}
+{% if poll_touch %}
     point = touch.read()
     if point:
         print("touch", point)
@@ -99,7 +148,7 @@ step = max(1, (HI - LO) // 50)
 step = (HI - LO) / 50
 {% endif %}
 while True:
-{% if touch %}
+{% if poll_touch %}
     point = touch.read()
     if point:
         print("touch", point)
@@ -118,7 +167,7 @@ while True:
 name = {{ first_series.name | py }}
 x = len(p[name]) and max(list(m)[0] for m in p[name])
 while True:
-{% if touch %}
+{% if poll_touch %}
     point = touch.read()
     if point:
         print("touch", point)
@@ -131,9 +180,12 @@ while True:
     ui.update(p)
     print("update: %d us, %d points" % (time.ticks_diff(time.ticks_us(), t0), len(p[name])))
     time.sleep_ms(500)
+{% elif actions %}
+# Nothing else to do here: each tap runs its function and redraws what it changed.
+# Your own loop (sensors, timers…) can go here: change p[...] and call ui.update(p).
 {% else %}
 while True:
-{% if touch %}
+{% if poll_touch %}
     point = touch.read()
     if point:
         print("touch", point)

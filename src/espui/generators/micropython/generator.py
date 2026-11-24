@@ -45,6 +45,7 @@ from espui.core.models import (
     MappingRule,
     Page,
     Parameter,
+    Pins,
     Project,
     SeriesParameter,
     StrParameter,
@@ -176,6 +177,10 @@ class _WidgetCode:
     anim: list[str] = field(default_factory=list)
     """Body of ``_anim_<id>()``: (folder, frames, delay) or None, for image widgets."""
     loop: bool = True
+    tap: str | None = None
+    """Function called when the widget is tapped ("При натиску")."""
+    shown: list[str] = field(default_factory=list)
+    """Body of ``_shown_<id>()``: whether a hidden-by-condition widget catches taps."""
 
 
 # ------------------------------------------------------------------ entry point
@@ -204,8 +209,6 @@ def generate(
     files[DRAW_FILE] = runtime_file(DRAW_FILE).read_bytes()
     if project.display.touch is not None:
         files[TOUCH_FILE] = runtime_file(TOUCH_FILE).read_bytes()
-    if project.display.sd is not None:
-        files[SD_FILE] = runtime_file(SD_FILE).read_bytes()
 
     drawn = {page.name: [w for w in page.widgets if w.type in SUPPORTED_TYPES] for page in pages}
     needs: dict[FontKey, CharNeeds] = {}
@@ -241,6 +244,7 @@ def generate(
             "widgets": widgets,
             "uses_alpha": any(w.translucent for w in widgets),
             "anims": [w for w in widgets if w.anim],
+            "taps": [w for w in widgets if w.tap],
             "uses_fonts": bool(fonts_module.fonts),
             "first_numeric": next((p for p in page.parameters if _is_number_param(p)), None),
             "first_series": next(
@@ -264,11 +268,18 @@ def generate(
         files[VSCODE_SETTINGS] = vscode_settings().encode("utf-8")
         notes += tuple(image_plan.summary())
     display = project.display
+    actions = sorted({w.tap for c in contexts for w in c["taps"]})
+    if actions and display.touch is None:
+        warnings.append(
+            "Є елементи з «При натиску», але сенсорний екран не ввімкнено "
+            "(Дисплей → Сенсорний екран): на платі дотики не читатимуться."
+        )
     main_context = {
         **contexts[0],
         "pages": contexts,
+        "actions": actions,
+        "poll_touch": display.touch is not None and not actions,
         "touch": display.touch is not None,
-        "sd": display.sd.mount if display.sd is not None else "",
     }
     files[MAIN_FILE] = _render("main.py.j2", main_context).encode("utf-8")
     files[PACKAGE_FILE] = _render(
@@ -312,16 +323,24 @@ def vscode_settings(existing: str | None = None) -> str:
     return json.dumps(data, ensure_ascii=False, indent=4) + "\n"
 
 
-def spi_id(chip: Chip) -> int:
+HSPI_PINS = (14, 13)
+"""Classic ESP32: SCK / MOSI of SPI2 (HSPI) on its IOMUX pins (the CYD wires them)."""
+
+
+def spi_id(chip: Chip, pins: Pins | None = None) -> int:
     """MicroPython hardware SPI id for the display.
 
     ``SPI(1)`` is SPI2_HOST and ``SPI(2)`` is SPI3_HOST. On the classic ESP32
-    the default pins (18/23) are SPI3's IOMUX pins; on ESP32-S3 the default
-    pins (12/11/10) are SPI2's (FSPI) IOMUX pins, and ``SPI(2)`` there resets
-    the board by watchdog with octal PSRAM (MicroPython 1.29). ESP32-C3 has
-    only SPI2.
+    the default pins (18/23) are SPI3's (VSPI) IOMUX pins and 14/13 are SPI2's
+    (HSPI, the CYD): the matching host keeps the full speed. On ESP32-S3 the
+    default pins (12/11/10) are SPI2's (FSPI) IOMUX pins, and ``SPI(2)`` there
+    resets the board by watchdog with octal PSRAM (MicroPython 1.29). ESP32-C3
+    has only SPI2.
     """
-    return 2 if chip is Chip.ESP32 else 1
+    if chip is Chip.ESP32:
+        on_hspi = pins is not None and (pins.sck, pins.mosi) == HSPI_PINS
+        return 1 if on_hspi else 2
+    return 1
 
 
 def _touch_settings(display: Display) -> str:
@@ -329,10 +348,15 @@ def _touch_settings(display: Display) -> str:
     if touch is None:
         return "None"
     if touch.kind == "xpt2046":
+        own = (
+            f', "sck": {touch.sck}, "mosi": {touch.mosi}, "miso": {touch.miso}'
+            if touch.own_bus
+            else ""
+        )
         return (
             f'{{"kind": "xpt2046", "cs": {touch.cs}, "irq": {touch.irq}, '
             f'"x_min": {touch.x_min}, "x_max": {touch.x_max}, '
-            f'"y_min": {touch.y_min}, "y_max": {touch.y_max}, "swap_xy": {touch.swap_xy}}}'
+            f'"y_min": {touch.y_min}, "y_max": {touch.y_max}, "swap_xy": {touch.swap_xy}{own}}}'
         )
     return (
         f'{{"kind": "cst816s", "sda": {touch.sda}, "scl": {touch.scl}, '
@@ -340,15 +364,7 @@ def _touch_settings(display: Display) -> str:
     )
 
 
-def _sd_settings(display: Display) -> str:
-    sd = display.sd
-    if sd is None:
-        return "None"
-    return f'{{"cs": {sd.cs}, "mount": {_py(sd.mount)}, "spi_hz": {sd.spi_hz:_}}}'
-
-
 TOUCH_FILE = "ui_touch.py"
-SD_FILE = "ui_sd.py"
 
 
 def render_display_settings(project: Project) -> str:
@@ -362,7 +378,7 @@ def render_display_settings(project: Project) -> str:
             f'"sck": {pins.sck}, "mosi": {pins.mosi}, "cs": {pins.cs}, '
             f'"dc": {pins.dc}, "rst": {pins.rst}, "blk": {pins.bl}, "miso": {pins.miso}'
             "}  # None: the module has no such pin",
-            f"SPI_ID = {spi_id(display.mcu)}  # {display.mcu.label}",
+            f"SPI_ID = {spi_id(display.mcu, pins)}  # {display.mcu.label}",
             f"SPI_HZ = {display.spi_hz:_}",
             f"WIDTH = {profile.width}  # physical panel size, portrait",
             f"HEIGHT = {profile.height}",
@@ -379,7 +395,6 @@ def render_display_settings(project: Project) -> str:
             f"IMAGE_CACHE = {display.image_cache:_}"
             "  # RAM for keeping pictures (0 = read from flash each time)",
             f"TOUCH = {_touch_settings(display)}  # touch panel (ui_touch.py), None = none",
-            f"SD = {_sd_settings(display)}  # microSD card (ui_sd.py), None = none",
         ]
     )
     template = runtime_file(get_driver(display.driver).files[0]).read_text("utf-8")
@@ -767,6 +782,18 @@ def _widget_code(
     code.body = body
     code.translucent = translucent
 
+    if widget.on_tap:
+        code.tap = widget.on_tap
+        visible = []
+        if "visible" in dynamic:
+            visible.append("visible")
+        if "opacity" in dynamic:
+            visible.append("_d.alpha(opacity) > 0")
+        if visible:
+            lines = _rule_lines(rules, page, widget, ("visible", "opacity"))
+            code.shown = ["p = self.p", *lines, f"return {' and '.join(visible)}"]
+        elif static_level == 0:
+            code.shown = ["return False  # opacity 0 %: never drawn, never tapped"]
     if rotated or dynamic & {"x", "y"}:
         # The box moves or turns: the engine redraws both the old and the new area.
         box = _rule_lines(rules, page, widget, _GEOMETRY)
