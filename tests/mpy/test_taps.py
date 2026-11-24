@@ -208,3 +208,81 @@ def test_generated_example_wires_the_taps(touch: bool) -> None:
     assert "ui.listen_touch()" in main
     warned = any("сенсорний екран не ввімкнено" in w for w in result.warnings)
     assert warned is not touch
+
+
+def editor_vs_board_project() -> Project:
+    """Taps on moved, turned and hidden widgets: the editor must answer as the board."""
+    return serializer.from_dict(
+        {
+            "display": {"rotation": 1},
+            "pages": [
+                {
+                    "name": "main",
+                    "parameters": [
+                        {"name": "on", "type": "bool", "default": True},
+                        {"name": "level", "type": "int", "min": 0, "max": 100, "default": 70},
+                    ],
+                    "test_values": {"on": False, "level": 30},
+                    "widgets": [
+                        {"id": "plain", "type": "rect", "x": 10, "y": 10, "w": 60, "h": 40,
+                         "on_tap": "a"},
+                        {"id": "turned", "type": "rect", "x": 100, "y": 20, "w": 80, "h": 30,
+                         "rotation_deg": 30, "on_tap": "b"},
+                        {"id": "moving", "type": "rect", "x": 0, "y": 150, "w": 50, "h": 40,
+                         "on_tap": "c",
+                         "rules": [{"param": "level", "prop": "x", "at_min": 0, "at_max": 200}]},
+                        {"id": "hiding", "type": "circle", "x": 200, "y": 100, "w": 60, "h": 60,
+                         "on_tap": "d",
+                         "rules": [{"if": ["on", "==", False], "set": "visible", "to": False}]},
+                        {"id": "label", "type": "text", "x": 20, "y": 20, "w": 40, "h": 16,
+                         "text": "OK"},
+                    ],
+                }
+            ],
+        }
+    )  # fmt: skip
+
+
+GRID_SCRIPT = r"""
+import json, ui_main
+
+class FakeDisplay:
+    width = 320
+    height = 240
+    def blit(self, buf, x, y, w, h):
+        pass
+
+ui = ui_main.UI(FakeDisplay())
+p = dict(ui_main.DEFAULTS)
+p.update(json.loads(VALUES))
+ui.draw(p, actions={"a": print, "b": print, "c": print, "d": print})
+print(json.dumps([[ui.hit(x, y) for x in range(0, 320, 5)] for y in range(0, 240, 5)]))
+"""
+
+
+@pytest.mark.parametrize("values", [{}, "test"])
+def test_editor_preview_taps_match_the_board(
+    run_mpy: RunMpy, tmp_path: Path, values: dict[str, object] | str
+) -> None:
+    """ "Перегляд" (core.touch.tap_at) and ui_draw.Page.hit agree at every point of a grid."""
+    from espui.core.evaluate import ParameterValues
+    from espui.core.touch import tap_at
+
+    project = editor_vs_board_project()
+    page = project.pages[0]
+    board_values = page.test_values if values == "test" else {}
+    generate(project).write(tmp_path)
+    proc = run_mpy(GRID_SCRIPT.replace("VALUES", repr(json.dumps(board_values))))
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    board = json.loads(proc.stdout.strip().splitlines()[-1])
+    editor_values = ParameterValues(page.parameters, dict(board_values))
+    differ = []
+    for row, y in enumerate(range(0, 240, 5)):
+        for col, x in enumerate(range(0, 320, 5)):
+            widget = tap_at(page, x, y, editor_values)
+            if (widget.id if widget else None) != board[row][col]:
+                differ.append((x, y, widget.id if widget else None, board[row][col]))
+    assert differ == []
+    hit = {cell for line in board for cell in line}
+    expected = {None, "plain", "turned", "moving"} | ({"hiding"} if values == {} else set())
+    assert hit == expected  # all kinds took part; the text over "plain" doesn't block it

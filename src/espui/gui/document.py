@@ -14,10 +14,11 @@ from PySide6.QtGui import QUndoCommand, QUndoStack
 
 from espui.assets.images import import_image
 from espui.core import serializer
-from espui.core.clipboard import copy_payload, paste
+from espui.core.clipboard import copy_payload, free_group_name, paste
 from espui.core.compat import can_bind
 from espui.core.identifiers import identifier_problem, page_name_problem
 from espui.core.models import (
+    MAX_PROJECT_COLORS,
     BoolParameter,
     Condition,
     Display,
@@ -309,6 +310,38 @@ class Document(QObject):
                 self.select(rest[0] if rest else None)
         return True
 
+    # ------------------------------------------------------------------ groups
+    def group_members(self, widget_id: str) -> list[str]:
+        """Ids of the widget's group in layer order (just the widget if it has none)."""
+        widget = self.page.widget(widget_id)
+        if widget is None or not widget.group:
+            return [widget_id]
+        return [w.id for w in self.page.widgets if w.group == widget.group]
+
+    def with_groups(self, ids: list[str]) -> list[str]:
+        """``ids`` and the rest of every group they touch, in layer order."""
+        groups = {w.group for w in self.page.widgets if w.id in ids and w.group}
+        return [w.id for w in self.page.widgets if w.id in ids or (w.group and w.group in groups)]
+
+    def group_selected(self) -> str | None:
+        """The selection (2+) as one new group; returns its name."""
+        ids = self.selected_ids
+        if len(ids) < 2:
+            return None
+        name = free_group_name(self.page)
+        self.set_on_widgets(ids, "group", name, f"Згрупувати: {len(ids)}", merge="")
+        self.select_many(ids, self.selected)
+        return name
+
+    def ungroup_selected(self) -> bool:
+        """Every group the selection touches: its widgets single again (still selected)."""
+        ids = self.with_groups(self.selected_ids)
+        grouped = [w.id for w in self.page.widgets if w.id in ids and w.group]
+        if not grouped:
+            return False
+        self.set_on_widgets(grouped, "group", None, f"Розгрупувати: {len(grouped)}", merge="")
+        return True
+
     def unhide_all(self) -> bool:
         """Every widget of the page shown and unlocked again (one undo step)."""
         ids = [w.id for w in self.page.widgets if w.editor_hidden or w.locked]
@@ -501,6 +534,34 @@ class Document(QObject):
         return widget
 
     # ------------------------------------------------------------------ display
+    # ------------------------------------------------------------------ project colours
+    def set_colors(self, colors: list[str], text: str) -> None:
+        if colors != self.project.colors:
+            self.undo_stack.push(_SetColors(self, colors, text))
+
+    def add_color(self, color: str) -> bool:
+        """Into the project's palette (once; the newest last). False if already there/full."""
+        color = color.lower()
+        if color in self.project.colors or len(self.project.colors) >= MAX_PROJECT_COLORS:
+            return False
+        self.set_colors([*self.project.colors, color], f"Додати колір {color}")
+        return True
+
+    def remove_color(self, color: str) -> bool:
+        if color not in self.project.colors:
+            return False
+        self.set_colors([c for c in self.project.colors if c != color], f"Прибрати колір {color}")
+        return True
+
+    def page_colors(self) -> list[str]:
+        """Colours used on the current page, the most used first (for the swatches)."""
+        counts: dict[str, int] = {}
+        for w in self.page.widgets:
+            for color in (w.color, w.track_color if w.type in ("bar", "arc") else None):
+                if color:
+                    counts[color.lower()] = counts.get(color.lower(), 0) + 1
+        return sorted(counts, key=lambda c: -counts[c])
+
     def set_display(self, display: Display) -> None:
         if display != self.project.display:
             self.undo_stack.push(_SetDisplay(self, display))
@@ -576,6 +637,18 @@ class _RenamePage(QUndoCommand):
 
     def undo(self) -> None:
         self.doc.project.pages[self.index].name = self.old
+
+
+class _SetColors(QUndoCommand):
+    def __init__(self, doc: Document, colors: list[str], text: str) -> None:
+        super().__init__(text)
+        self.doc, self.old, self.new = doc, list(doc.project.colors), list(colors)
+
+    def redo(self) -> None:
+        self.doc.project.colors = list(self.new)
+
+    def undo(self) -> None:
+        self.doc.project.colors = list(self.old)
 
 
 class _SetDisplay(QUndoCommand):

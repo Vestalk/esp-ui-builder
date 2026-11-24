@@ -5,6 +5,7 @@ from __future__ import annotations
 from typing import Any
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -14,8 +15,10 @@ from PySide6.QtWidgets import (
     QFrame,
     QGridLayout,
     QGroupBox,
+    QHBoxLayout,
     QLabel,
     QLineEdit,
+    QPushButton,
     QScrollArea,
     QSpinBox,
     QVBoxLayout,
@@ -34,6 +37,7 @@ from espui.core.models import (
     Pins,
     Touch,
 )
+from espui.core.touch import parse_calibration
 from espui.displays import CONTROLLERS, CUSTOM_MODEL, load_profiles
 from espui.generators.micropython.drivers import DRIVERS
 
@@ -76,6 +80,12 @@ TOUCH_PINS = (
 )
 OPTIONAL_TOUCH = frozenset({"irq", "rst", "sck", "mosi", "miso"})
 OWN_BUS = ("sck", "mosi", "miso")
+CALIBRATION_CODE = """\
+# Калібрування сенсора: торкніться 4 хрестиків по черзі.
+from ui.main import ui_display  # ваша тека сторінки
+
+ui_display.calibrate_touch()  # друкує ESPUI-CAL … — вставте в «Дисплей»
+"""
 SUGGESTED_MISO = 13
 
 
@@ -541,6 +551,28 @@ class DisplayDialog(QDialog):
         self.swap_xy.setChecked(cal.swap_xy)
         self.swap_xy.toggled.connect(self._validate)
         form.addRow("", self.swap_xy)
+        # Calibration on the board: it prints a line, pasted here.
+        cal_board = self.cal_board = QWidget()
+        board_row = QHBoxLayout(cal_board)
+        board_row.setContentsMargins(0, 0, 0, 0)
+        self.cal_paste = QLineEdit()
+        self.cal_paste.setObjectName("cal_paste")
+        self.cal_paste.setPlaceholderText("вставте рядок ESPUI-CAL … з плати")
+        self.cal_paste.textChanged.connect(self._paste_calibration)
+        self.cal_copy = QPushButton("Код калібрування")
+        self.cal_copy.setObjectName("cal_copy")
+        self.cal_copy.setToolTip(
+            "Скопіювати код для плати: він покаже 4 хрестики — торкніться кожного,\n"
+            "і плата надрукує рядок ESPUI-CAL, який треба вставити сюди\n\n" + CALIBRATION_CODE
+        )
+        self.cal_copy.clicked.connect(self._copy_calibration_code)
+        board_row.addWidget(self.cal_paste, 1)
+        board_row.addWidget(self.cal_copy)
+        form.addRow("З плати", cal_board)
+        self.cal_status = QLabel()
+        self.cal_status.setObjectName("cal_status")
+        self.cal_status.setWordWrap(True)
+        form.addRow("", self.cal_status)
         self.touch_hint = QLabel()
         self.touch_hint.setWordWrap(True)
         self.touch_hint.setEnabled(False)
@@ -553,16 +585,38 @@ class DisplayDialog(QDialog):
         kind = self.touch_kind.currentData()
         for (pin_kind, _field), edit in self.touch_pins.items():
             self.touch_form.setRowVisible(edit, pin_kind == kind)
-        for row in (self.cal_row, self.swap_xy):
+        for row in (self.cal_row, self.swap_xy, self.cal_board, self.cal_status):
             self.touch_form.setRowVisible(row, kind == "xpt2046")
         self.touch_hint.setText(
             {
                 None: "Звичайний дисплей без сенсора.",
-                "xpt2046": "T_CLK, T_DIN, T_DO — на SCL, SDA і MISO дисплея (спільна шина). "
-                "Калібрування — сирі значення на краях екрана в портреті; поміняйте "
-                "місцями, щоб віддзеркалити вісь.",
+                "xpt2046": "T_CLK, T_DIN, T_DO: порожні — сенсор на шині дисплея (SCL, SDA, "
+                "MISO); заповнені — на своїх пінах (як на CYD). Калібрування — сирі значення "
+                "на краях екрана в портреті; найпростіше — «Код калібрування» на платі й "
+                "вставити надрукований рядок.",
                 "cst816s": "Окрема шина I2C (SDA, SCL); INT і RST — за бажанням.",
             }[kind]
+        )
+
+    def _paste_calibration(self, text: str) -> None:
+        """A line printed by ui_display.calibrate_touch(): into the fields below."""
+        if not text.strip():
+            self.cal_status.setText("")
+            return
+        values = parse_calibration(text)
+        if values is None:
+            self.cal_status.setText("⚠ не схоже на рядок ESPUI-CAL x_min=… x_max=… y_min=… y_max=…")
+            return
+        for field, spin in self.calibration.items():
+            spin.setValue(int(values[field]))
+        self.swap_xy.setChecked(bool(values["swap_xy"]))
+        self.cal_status.setText("✓ Калібрування з плати застосовано — перегенеруйте сторінку")
+
+    def _copy_calibration_code(self) -> None:
+        QGuiApplication.clipboard().setText(CALIBRATION_CODE)
+        self.cal_status.setText(
+            "Код скопійовано: запустіть його на платі (після генерації сторінки), торкніться "
+            "4 хрестиків і вставте надрукований рядок сюди."
         )
 
     def _touch_pin_edited(self) -> None:

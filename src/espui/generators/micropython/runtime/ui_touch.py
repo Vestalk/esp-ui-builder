@@ -12,6 +12,10 @@
 #   the raw values at the left / right / top / bottom edges in portrait (give them
 #   the other way round to mirror an axis).
 # * CST816S (capacitive, round GC9A01 touch modules): on I2C, address 0x15.
+#
+# Calibration (XPT2046): ui_display.calibrate_touch() shows four crosses, one after
+# another; touch each one. It prints the line "ESPUI-CAL x_min=… swap_xy=…" to paste
+# into the editor (Дисплей → Сенсорний екран → Калібрування) and applies it right away.
 
 try:
     from time import sleep_ms
@@ -22,6 +26,11 @@ except ImportError:  # CPython (tests)
         _sleep(ms / 1000)
 
 
+CAL_INSET = 20  # crosses this far from the edges of the screen
+CAL_SAMPLES = 8  # readings of a steady press per cross
+CAL_PREFIX = "ESPUI-CAL"
+WHITE = 0xFFFF
+BLACK = 0
 XPT_HZ = 2_000_000  # the XPT2046 is slow: SPI clock while reading it
 XPT_SAMPLES = 5  # readings per axis; the median is used
 XPT_PRESSURE = 300  # raw Z1 below this: not touched
@@ -37,6 +46,17 @@ def to_screen(px, py, width, height, rotation):
     if rotation == 3:
         return height - 1 - py, px
     return px, py
+
+
+def to_portrait(x, y, width, height, rotation):
+    """Screen point for ``rotation`` -> portrait point (the inverse of to_screen)."""
+    if rotation == 1:
+        return width - 1 - y, x
+    if rotation == 2:
+        return width - 1 - x, height - 1 - y
+    if rotation == 3:
+        return y, height - 1 - x
+    return x, y
 
 
 def calibrate(raw, low, high, size):
@@ -179,3 +199,102 @@ def open_touch(settings, display, spi, bus_hz, rotation):
     )
     rst = pin("rst", machine.Pin.OUT)
     return CST816S(i2c, irq, rst, width, height, rotation)
+
+
+def _cross(display, x, y, color):
+    display.fill_rect(x - 8, y, 17, 1, color)
+    display.fill_rect(x, y - 8, 1, 17, color)
+
+
+def _press(touch):
+    """Median raw (a, b) of a steady press; returns after the finger is lifted."""
+    samples = []
+    while len(samples) < CAL_SAMPLES:
+        raw = touch.raw()
+        if raw is None:
+            samples = []  # lifted too early: start again
+            sleep_ms(20)
+            continue
+        samples.append(raw)
+        sleep_ms(10)
+    while touch.raw() is not None:
+        sleep_ms(20)
+    sleep_ms(150)
+    return _median([r[0] for r in samples]), _median([r[1] for r in samples])
+
+
+def _fit(points, pos, raw, size):
+    """Raw values at portrait 0 and size-1, from the readings at two positions."""
+    lo = min(p[pos] for p in points)
+    hi = max(p[pos] for p in points)
+    r_lo = [p[raw] for p in points if p[pos] == lo]
+    r_hi = [p[raw] for p in points if p[pos] == hi]
+    r_lo = sum(r_lo) / len(r_lo)
+    r_hi = sum(r_hi) / len(r_hi)
+    slope = (r_hi - r_lo) / (hi - lo)
+    low = r_lo - slope * lo
+    return int(round(low)), int(round(low + slope * (size - 1)))
+
+
+def solve(points, width, height):
+    """[(portrait x, y, raw a, raw b)] at the crosses -> calibration values.
+
+    ``swap_xy``: the panel's first raw channel follows the portrait Y.
+    """
+
+    def change(pos, raw):
+        lo = min(p[pos] for p in points)
+        a = [p[raw] for p in points if p[pos] == lo]
+        b = [p[raw] for p in points if p[pos] != lo]
+        return abs(sum(b) / len(b) - sum(a) / len(a))
+
+    swap = change(1, 2) > change(0, 2)
+    rx, ry = (3, 2) if swap else (2, 3)
+    x_min, x_max = _fit(points, 0, rx, width)
+    y_min, y_max = _fit(points, 1, ry, height)
+    clamp = lambda v: 0 if v < 0 else 4095 if v > 4095 else v  # noqa: E731
+    return {
+        "x_min": clamp(x_min),
+        "x_max": clamp(x_max),
+        "y_min": clamp(y_min),
+        "y_max": clamp(y_max),
+        "swap_xy": swap,
+    }
+
+
+def calibration_line(cal):
+    return "%s x_min=%d x_max=%d y_min=%d y_max=%d swap_xy=%d" % (
+        CAL_PREFIX,
+        cal["x_min"],
+        cal["x_max"],
+        cal["y_min"],
+        cal["y_max"],
+        1 if cal["swap_xy"] else 0,
+    )
+
+
+def run_calibration(display, touch, inset=CAL_INSET):
+    """Four crosses in the corners, touched one by one: the values, applied to ``touch``."""
+    if not hasattr(touch, "raw"):
+        raise ValueError("calibration is for XPT2046 (resistive); CST816S needs none")
+    sw, sh = display.width, display.height
+    targets = (
+        (inset, inset),
+        (sw - 1 - inset, inset),
+        (sw - 1 - inset, sh - 1 - inset),
+        (inset, sh - 1 - inset),
+    )
+    display.fill_rect(0, 0, sw, sh, BLACK)
+    points = []
+    for sx, sy in targets:
+        _cross(display, sx, sy, WHITE)
+        a, b = _press(touch)
+        _cross(display, sx, sy, BLACK)
+        px, py = to_portrait(sx, sy, touch.width, touch.height, touch.rotation)
+        points.append((px, py, a, b))
+    cal = solve(points, touch.width, touch.height)
+    touch.cal = (cal["x_min"], cal["x_max"], cal["y_min"], cal["y_max"])
+    touch.swap_xy = cal["swap_xy"]
+    print(calibration_line(cal))
+    display.fill_rect(sw // 2 - 10, sh // 2 - 10, 21, 21, WHITE)  # done
+    return cal

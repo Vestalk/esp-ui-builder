@@ -33,6 +33,8 @@ def row_text(level: int, widget: Widget) -> str:
     if widget.bind:
         parts.append(widget.bind)
     extra = badges(widget)
+    if widget.group:
+        extra = f"▣ {widget.group}" + (f" {extra}" if extra else "")
     return f"{level}  " + " · ".join(parts) + (f"  {extra}" if extra else "")
 
 

@@ -49,6 +49,7 @@ from PySide6.QtWidgets import (
 
 from espui.core.evaluate import ParameterValues, effective
 from espui.core.models import Page, PivotPoint, Project, Widget, WidgetType
+from espui.core.touch import TapZone, tap_at, tap_box, tap_zones
 from espui.gui import theme
 from espui.gui.document import Document
 from espui.gui.parameters import PARAM_MIME
@@ -305,6 +306,13 @@ class PageItem(QGraphicsItem):
         """Boxes of the other selected widgets (a multi-selection): dashed outlines."""
         self.hidden: list[QRectF] = []
         """Boxes of widgets hidden by conditions (outlined on the active page only)."""
+        self.group_frame: QRectF | None = None
+        """Around a selected group (all its widgets), drawn while the page is active."""
+        self.taps: list[TapZone] = []
+        """Where widgets with "При натиску" catch taps (as on the board)."""
+        self.show_taps = False
+        self.flash: tuple[QRectF, bool] | None = None
+        """The zone a simulated tap just reached (or the point, if it reached none)."""
         self.set_page(page, project)
         self.set_active(False)
 
@@ -317,6 +325,7 @@ class PageItem(QGraphicsItem):
             return
         self.fingerprint = fingerprint
         self.name = page.name
+        self.taps = tap_zones(page)  # 👁-hidden ones too: the board has them
         shown = [w for w in page.widgets if not w.editor_hidden]  # 👁: not drawn in the editor
         if len(shown) != len(page.widgets):
             page = page.model_copy(update={"widgets": shown})
@@ -357,12 +366,25 @@ class PageItem(QGraphicsItem):
             painter.setBrush(Qt.BrushStyle.NoBrush)
             for rect in self.group_boxes:
                 painter.drawRect(rect)
+        if self.active and self.group_frame is not None:
+            frame_pen = QPen(theme.current().color("blue"), 1, Qt.PenStyle.DashDotLine)
+            frame_pen.setCosmetic(True)
+            painter.setPen(frame_pen)
+            painter.setBrush(Qt.BrushStyle.NoBrush)
+            painter.drawRect(self.group_frame.adjusted(-3, -3, 3, 3))
         if self.active and self.hidden:  # hidden as on the board, but still findable
             hidden_pen = QPen(QColor(143, 163, 173, 150), 1, Qt.PenStyle.DashLine)
             hidden_pen.setCosmetic(True)
             painter.setPen(hidden_pen)
             for rect in self.hidden:
                 painter.drawRect(rect)
+        if self.active and self.show_taps:
+            self._paint_taps(painter)
+        if self.active and self.flash is not None:
+            rect, hit = self.flash
+            painter.setPen(Qt.PenStyle.NoPen)
+            painter.setBrush(QColor(60, 200, 110, 150) if hit else QColor(230, 80, 80, 170))
+            painter.drawRect(rect)
         t = theme.current()
         color = t.color("blue") if self.active else QColor(SCREEN_OUTLINE)
         pen = QPen(color, 2 if self.active else 1)
@@ -391,6 +413,31 @@ class PageItem(QGraphicsItem):
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom,
             f"ui_{self.name}.py",
         )
+
+    def _paint_taps(self, painter: QPainter) -> None:
+        """Tap zones: green, orange if too small for a finger, grey while hidden by a rule."""
+        font = theme.mono_font(9)
+        painter.setFont(font)
+        for zone in self.taps:
+            x, y, w, h = zone.box
+            rect = QRectF(x, y, max(w, 1), max(h, 1))
+            if not zone.shown:
+                fill, line = QColor(150, 160, 170, 40), QColor(150, 160, 170, 160)
+            elif zone.small:
+                fill, line = QColor(255, 150, 40, 70), QColor(255, 140, 20, 230)
+            else:
+                fill, line = QColor(60, 200, 110, 55), QColor(40, 180, 90, 230)
+            pen = QPen(line, 1, Qt.PenStyle.DashLine)
+            pen.setCosmetic(True)
+            painter.setPen(pen)
+            painter.setBrush(fill)
+            painter.drawRect(rect)
+            painter.setPen(line)
+            painter.drawText(
+                rect.adjusted(2, 1, 0, 0),
+                Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop,
+                f"▶ {zone.widget.on_tap}",
+            )
 
 
 class _Gesture:
@@ -424,6 +471,7 @@ class Workspace(QGraphicsView):
     page_clicked = Signal(int)
     zoom_changed = Signal(float)
     message = Signal(str)
+    preview_changed = Signal(bool)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -444,10 +492,76 @@ class Workspace(QGraphicsView):
         self._band: tuple[QPoint, bool] | None = None
         """A selection frame being dragged: (start in the view, add to the selection)."""
         self._rubber = QRubberBand(QRubberBand.Shape.Rectangle, self.viewport())
+        self.preview = False
+        """"Перегляд": a click is a tap (as on the board), nothing is selected or moved."""
+        self.show_taps = False
+        self.last_tap: tuple[int, int, str | None] | None = None
+        """(x, y, widget id or None) of the last simulated tap."""
+        self._flash_timer = QTimer(self)
+        self._flash_timer.setSingleShot(True)
+        self._flash_timer.setInterval(450)
+        self._flash_timer.timeout.connect(self._end_flash)
         self._anim_start: dict[tuple[str, str], float] = {}
         self._anim_timer = QTimer(self)
         self._anim_timer.setInterval(40)
         self._anim_timer.timeout.connect(self._animate)
+
+    # ------------------------------------------------------------------ taps
+    def set_show_taps(self, on: bool) -> None:
+        """Outline the tap zones ("Зони натиску"); always on in "Перегляд"."""
+        self.show_taps = on
+        self._apply_taps()
+
+    def set_preview(self, on: bool) -> None:
+        """ "Перегляд": clicks become taps; leaving it (Esc too) returns to editing."""
+        if on == self.preview:
+            return
+        self.preview = on
+        self._gesture = None
+        self._band = None
+        self._rubber.hide()
+        self.viewport().setCursor(
+            Qt.CursorShape.PointingHandCursor if on else Qt.CursorShape.ArrowCursor
+        )
+        self._apply_taps()
+        self.update_selection()
+        self.preview_changed.emit(on)
+        if on:
+            self.message.emit(
+                "Перегляд: клацайте по сторінці як пальцем — видно, яка процедура "
+                "спрацює (Esc — назад до редагування)"
+            )
+
+    def _apply_taps(self) -> None:
+        for item in self.items_:
+            item.show_taps = self.show_taps or self.preview
+            item.update()
+
+    def simulate_tap(self, x: float, y: float) -> Widget | None:
+        """A tap at page pixels (x, y) of the current page, as the board handles it."""
+        item, doc = self.active_item(), self.doc
+        if item is None or doc is None:
+            return None
+        px, py = int(x), int(y)
+        widget = tap_at(doc.page, px, py)
+        self.last_tap = (px, py, widget.id if widget else None)
+        no_touch = "" if doc.project.display.touch else " — увага: дисплей без сенсора"
+        if widget is not None:
+            bx, by, bw, bh = tap_box(widget, ParameterValues.for_page(doc.page))
+            item.flash = (QRectF(bx, by, max(bw, 1), max(bh, 1)), True)
+            self.message.emit(f"Натиск ({px}, {py}) → «{widget.id}»: {widget.on_tap}(){no_touch}")
+        else:
+            item.flash = (QRectF(px - 3, py - 3, 7, 7), False)
+            self.message.emit(f"Натиск ({px}, {py}): тут немає елемента з «При натиску»{no_touch}")
+        item.update()
+        self._flash_timer.start()
+        return widget
+
+    def _end_flash(self) -> None:
+        for item in self.items_:
+            if item.flash is not None:
+                item.flash = None
+                item.update()
 
     # ------------------------------------------------------------------ content
     def set_document(self, doc: Document) -> None:
@@ -471,6 +585,8 @@ class Workspace(QGraphicsView):
         ):
             scene.clear()
             self.items_ = [PageItem(i, p, project) for i, p in enumerate(project.pages)]
+            for page_item in self.items_:
+                page_item.show_taps = self.show_taps or self.preview
             for item in self.items_:
                 scene.addItem(item)
         x = 0.0
@@ -513,11 +629,20 @@ class Workspace(QGraphicsView):
         item = self.active_item()
         if item is None or self.doc is None:
             return
+        if self.preview:  # "Перегляд": the page as on the board, no selection marks
+            item.group_boxes = []
+            item.group_frame = None
+            item.selection.set_box(None)
+            item.pivot.setVisible(False)
+            item.ghosts.set_frames([])
+            item.update()
+            return
         group = self._gesture.group if self._gesture else []
         dx, dy = self._gesture.shift if self._gesture else (0, 0)
         others = group or [w for w in self.doc.page.widgets if w.id in self.doc.also_selected]
         boxes = [self.widget_box(shift_widget(w, dx, dy) if group else w) for w in others]
         item.group_boxes = [QRectF(x, y, max(w, 2), max(h, 2)) for x, y, w, h in boxes]
+        item.group_frame = self._group_frame(item.group_boxes)
         item.update()
         widget = self._gesture.current if self._gesture else self.doc.widget
         if widget is None:
@@ -530,9 +655,27 @@ class Workspace(QGraphicsView):
         free = pickable(widget)  # 🔒 / 👁: an outline only, no handles to pull
         for handle in item.selection.handles.values():
             handle.setVisible(free)
-        item.pivot.setVisible(free and widget.type != "chart")
+        single = not self.doc.also_selected  # several: the centre grabs them all, no pivot
+        item.pivot.setVisible(free and single and widget.type != "chart")
         item.pivot.setPos(*e.pivot)
         item.ghosts.set_frames(self.mapping_frames(widget))
+
+    def _group_frame(self, others: list[QRectF]) -> QRectF | None:
+        """The box around the selection when it is exactly one whole group."""
+        doc = self.doc
+        if doc is None or doc.selected is None or not others:
+            return None
+        main = doc.page.widget(doc.selected)
+        if main is None or not main.group:
+            return None
+        if set(doc.group_members(main.id)) != set(doc.selected_ids):
+            return None
+        widget = self._gesture.current if self._gesture else main
+        x, y, w, h = self.widget_box(widget)
+        frame = QRectF(x, y, max(w, 2), max(h, 2))
+        for rect in others:
+            frame = frame.united(rect)
+        return frame
 
     def mapping_frames(self, widget: Widget) -> list[tuple[QRectF, str]]:
         """Where x/y mappings put the widget at the parameter's min and max."""
@@ -597,7 +740,14 @@ class Workspace(QGraphicsView):
         active = self.active_item()
         handle = self.itemAt(pos)
         grabbed = isinstance(handle, Handle | PivotHandle) and handle.role
-        if grabbed and active and self.doc and self.doc.widget and pickable(self.doc.widget):
+        if (
+            grabbed
+            and not self.preview
+            and active
+            and self.doc
+            and self.doc.widget
+            and pickable(self.doc.widget)
+        ):
             start = active.mapFromScene(self.mapToScene(pos))
             self._gesture = self._start(self.doc.widget, start, cast(str, handle.role))  # type: ignore[union-attr]
             return
@@ -611,6 +761,9 @@ class Workspace(QGraphicsView):
         if self.doc is None:
             return
         point = item.mapFromScene(self.mapToScene(pos))
+        if self.preview:  # a tap, as on the board
+            self.simulate_tap(point.x(), point.y())
+            return
         widget = self.widget_at(point)
         shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
         if widget is None:  # an empty place of the page: a selection frame
@@ -618,11 +771,24 @@ class Workspace(QGraphicsView):
             self._rubber.setGeometry(QRect(pos, QSize()))
             self._rubber.show()
             return
-        if shift:  # Shift+click: into the selection, or out of it
-            self.doc.toggle_selected(widget.id)
+        # Ctrl(⌘)+click: one widget of a group (Alt is "no snapping" while dragging)
+        deep = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
+        members = [widget.id] if deep else self.doc.group_members(widget.id)
+        if shift:  # Shift+click: into the selection, or out of it (a whole group)
+            if len(members) > 1:
+                ids = self.doc.selected_ids
+                if widget.id in ids:
+                    self.doc.select_many([i for i in ids if i not in members])
+                else:
+                    self.doc.select_many([*ids, *members], widget.id)
+            else:
+                self.doc.toggle_selected(widget.id)
             return
         ids = self.doc.selected_ids
-        if widget.id in ids and len(ids) > 1:  # drag the whole selection
+        if len(members) > 1 and not set(members) <= set(ids):  # a group: all of it
+            self.doc.select_many(members, widget.id)
+            ids = self.doc.selected_ids
+        if not deep and widget.id in ids and len(ids) > 1:  # drag the whole selection
             self.doc.select_many(ids, widget.id)  # the grabbed one leads (and snaps)
             self._gesture = self._start(widget, point, "")
             self._gesture.group = [
@@ -748,11 +914,18 @@ class Workspace(QGraphicsView):
             x, y, width, height = self.widget_box(w)
             if area.intersects(QRectF(x, y, max(width, 1), max(height, 1))):
                 hit.append(w.id)
+        hit = doc.with_groups(hit)  # a frame touching a group takes all of it
         ids = [*doc.selected_ids, *hit] if add else hit
         doc.select_many(ids, hit[-1] if hit else doc.selected)
 
     # ------------------------------------------------------------------ keyboard
     def keyPressEvent(self, event: QKeyEvent) -> None:
+        if self.preview:  # nothing to edit in "Перегляд"
+            if event.key() == Qt.Key.Key_Escape:
+                self.set_preview(False)
+                return
+            super().keyPressEvent(event)
+            return
         doc = self.doc
         widget = doc.widget if doc else None
         key = event.key()

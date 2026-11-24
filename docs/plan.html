@@ -117,6 +117,9 @@ pre.st{margin:0 12px 12px;background:var(--soft);border-radius:6px;padding:8px 1
 .lay .grip{color:var(--mut);cursor:grab;padding:0 4px;font-size:12px;letter-spacing:-2px}
 .lay .lt{flex:1;min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .lay .lb{display:flex;gap:2px}.lay .lb button{min-height:22px;padding:0 6px;font-size:12px}
+.lay .lb button.fl{opacity:.45}.lay .lb button.fl.on{opacity:1}.lay .lr.hid .lt{opacity:.45}
+.sw{display:flex;flex-wrap:wrap;gap:3px}.sw button{width:18px;height:18px;min-height:0;padding:0;border-radius:3px;border:1px solid #5b6770}.sw button.pg{border-style:dashed}.sw button.add{width:24px;color:var(--blue);font-weight:700;background:none}
+.tool button[aria-pressed="true"]{background:var(--blue);color:#fff}
 .lay .lz{font-size:11px;color:var(--mut);font-variant-numeric:tabular-nums;width:2.2em;text-align:right}
 .lay.drag .lr{cursor:grabbing}.lr.ghostrow{opacity:.4}
 #lay{position:relative}#lind{position:absolute;left:4px;right:4px;height:2px;background:var(--blue);border-radius:1px;display:none;pointer-events:none}
@@ -144,11 +147,12 @@ pre.st{margin:0 12px 12px;background:var(--soft);border-radius:6px;padding:8px 1
 <div class="wrap">
 <div class="win" id="win">
 <div class="tb"><i style="background:#ff5f57"></i><i style="background:#febc2e"></i><i style="background:#28c840"></i><span style="margin-left:10px">weather.espui — ESP32 UI Builder</span></div>
-<div class="menu"><button type="button" id="m-file" aria-haspopup="true" aria-expanded="false">Файл</button><span>Правка</span><span>Вигляд</span><span>Дисплей</span><span>Параметри</span><span>Генерація</span><span>Довідка</span></div>
+<div class="menu"><button type="button" id="m-file" aria-haspopup="true" aria-expanded="false">Файл</button><span>Правка</span><span title="Вирівняти, розподілити, згрупувати (Ctrl+Shift+G) — у програмі">Розташування</span><span>Вигляд</span><span>Дисплей</span><span>Параметри</span><span>Генерація</span><span>Довідка</span></div>
 <div class="tool">
 <button type="button" class="chip" id="b-disp" title="Налаштування дисплея">GMT020-02-8B · <span id="dsz">320×240</span> · <span id="dmcu">ESP32-S3</span> · <span id="ddrv">ui_st7789</span></button><span class="chip">Ціль: MicroPython · MicroPico</span>
 <button type="button" aria-label="Скасувати">↶</button><button type="button" aria-label="Повторити">↷</button>
 <span class="chip">Сітка 4 px</span>
+<button type="button" id="b-taps" aria-pressed="false" title="Де елементи з «При натиску» ловлять дотик (Ctrl+Shift+T)">Зони натиску</button><button type="button" id="b-prev" aria-pressed="false" title="Клацання — це натиск пальцем: видно, яка процедура спрацює (F5, Esc)">▷ Перегляд</button>
 <button type="button" class="gen" id="b-gen">▶ Згенерувати</button>
 </div>
 <div class="tabs" id="tabs" role="tablist" aria-label="Сторінки"></div>
@@ -181,6 +185,7 @@ pre.st{margin:0 12px 12px;background:var(--soft);border-radius:6px;padding:8px 1
 <span>Тип</span><select id="p-type"></select>
 <span>x y w h</span><div class="xywh"><input id="p-x" type="number" aria-label="x"><input id="p-y" type="number" aria-label="y"><input id="p-w" type="number" aria-label="ширина"><input id="p-h" type="number" aria-label="висота"></div>
 <span>Колір</span><input id="p-col" type="color">
+<span></span><div class="sw" id="p-sw" aria-label="Кольори проєкту"></div>
 <span class="sc-on">Доріжка</span><div class="sc-on" style="display:flex;gap:8px;align-items:center"><input id="p-trk" type="color" style="width:64px;flex:none" aria-label="Колір доріжки"><label style="display:flex;gap:4px;align-items:center;font-size:12px"><input id="p-strk" type="checkbox">Показувати доріжку</label></div>
 <span class="sc-on"></span><label class="sc-on" style="display:flex;gap:4px;align-items:center;font-size:12px"><input id="p-sval" type="checkbox">Показувати число</label>
 <span>Параметр</span><select id="p-bind"></select>
@@ -188,7 +193,8 @@ pre.st{margin:0 12px 12px;background:var(--soft);border-radius:6px;padding:8px 1
 <span class="ff-on">Шрифт</span><select class="ff-on" id="p-ff" aria-label="Шрифт"><option value="serif">Literata — з засічками (за замовчуванням)</option><option value="mono">JetBrains Mono — моноширинний</option><option value="pixel">Press Start 2P — піксельний</option></select>
 <span class="ff-on"></span><button type="button" class="ff-on" id="p-ff-all" style="min-height:26px;font-size:12px">Застосувати шрифт до всіх елементів сторінки</button>
 <span class="fs-on">Розмір</span><div class="fs-on" style="display:flex;gap:6px;align-items:center"><input id="p-fs" type="number" min="8" max="72" step="1" style="width:64px;flex:none" aria-label="Розмір шрифту, px"><span>px</span><span id="p-fs-h" style="font-size:12px;color:var(--mut)"></span></div>
-</div><div class="err" id="e-fs" style="padding:0 12px;margin:0 0 4px"></div>
+<span>При натиску</span><input id="p-tap" placeholder="назва процедури, напр. start_pump" spellcheck="false" aria-label="Процедура при натиску">
+</div><div class="err" id="e-fs" style="padding:0 12px;margin:0 0 4px"></div><div class="hint" id="tap-hint" style="color:#d9822b"></div>
 <div id="lookp"><div class="ph">Вигляд</div><div class="pr">
 <span>Непрозорість</span><div style="display:flex;gap:6px;align-items:center"><input id="o-val" type="number" min="0" max="100" step="1" style="width:64px;flex:none" aria-label="Непрозорість, відсотки"><span>%</span><input id="o-sl" type="range" min="0" max="100" step="1" style="flex:1;height:26px;accent-color:var(--red)" aria-label="Непрозорість повзунком"></div>
 <span></span><button type="button" id="o-all" style="min-height:26px;font-size:12px">Застосувати непрозорість до всіх елементів сторінки</button>
@@ -446,20 +452,35 @@ function renderW(){return W.map(w0=>{const w=eff(w0),p=pget(w.bind),v=p?V[p.name
     const t=p?fmt(w.fmt,show(v)):w.fmt;
     return '<text x="'+w.x+'" y="'+(w.y+w.h*.8)+'" fill="'+w.col+'" font-size="'+w.fs+'" '+fa(w)+'>'+esc(t)+'</text>'})();const T=rotT(w),R1=T?'<g'+T+'>'+R+'</g>':R,R2=w.alpha<1?'<g opacity="'+(+Math.max(w.alpha,.1).toFixed(3))+'">'+R1+'</g>':R1;if(w.vis)return R2;if(PN)return '';return '<g'+T+' class="hid"><rect x="'+w.x+'" y="'+w.y+'" width="'+Math.max(w.w,2)+'" height="'+Math.max(w.h,2)+'" fill="none" stroke="#8fa3ad" stroke-dasharray="3 3" vector-effect="non-scaling-stroke" opacity=".6"/></g>'}).join('')}
 function draw(){
-  $('g-w').innerHTML=renderW();dirty();
-  $('g-hit').innerHTML=W.map((w0,i)=>{const w=eff(w0);return '<rect class="hit"'+rotT(w)+' data-i="'+i+'" x="'+(w.w<6?w.x-3:w.x)+'" y="'+(w.h<6?w.y-3:w.y)+'" width="'+Math.max(w.w,6)+'" height="'+Math.max(w.h,6)+'" fill="transparent"/>'}).join('');
+  {const all=W;W=all.filter(w=>!w.hid);try{$('g-w').innerHTML=renderW()}finally{W=all}}dirty();
+  $('g-hit').innerHTML=W.map((w0,i)=>{if(w0.hid||w0.lck)return '';const w=eff(w0);return '<rect class="hit"'+rotT(w)+' data-i="'+i+'" x="'+(w.w<6?w.x-3:w.x)+'" y="'+(w.h<6?w.y-3:w.y)+'" width="'+Math.max(w.w,6)+'" height="'+Math.max(w.h,6)+'" fill="transparent"/>'}).join('');
   const c=cur?eff(cur):null;let ghost='';
   {const mx=(cur&&cur.rules||[]).find(r=>r.kind==='map'&&r.prop==='x'&&isNum(pget(r.param))),my=(cur&&cur.rules||[]).find(r=>r.kind==='map'&&r.prop==='y'&&isNum(pget(r.param)));
   if(cur&&(mx||my)){[[0,'мін'],[1,'макс']].forEach(([f,l])=>{const gx=mx?(f?+mx.b:+mx.a):c.x,gy=my?(f?+my.b:+my.a):c.y;ghost+='<rect x="'+gx+'" y="'+gy+'" width="'+Math.max(c.w,2)+'" height="'+Math.max(c.h,2)+'" fill="none" stroke="#efa627" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/><text x="'+(gx+2)+'" y="'+(gy-3)+'" fill="#efa627" font-size="'+(11/Z)+'" font-family="system-ui,sans-serif">'+l+'</text>'});
     const a=[mx?+mx.a:c.x,my?+my.a:c.y],b=[mx?+mx.b:c.x,my?+my.b:c.y];ghost+='<line x1="'+a[0]+'" y1="'+a[1]+'" x2="'+b[0]+'" y2="'+b[1]+'" stroke="#efa627" stroke-dasharray="2 3" vector-effect="non-scaling-stroke"/>'}}
-  $('g-sel').innerHTML=ghost+(c?'<g'+rotT(c)+'><rect x="'+c.x+'" y="'+c.y+'" width="'+c.w+'" height="'+c.h+'" fill="none" stroke="#4da3ff" vector-effect="non-scaling-stroke"/></g>':'');
+  if(PREV){$('g-sel').innerHTML=tapZones()+flashBox();$('g-hdl').innerHTML=''}else{
+  $('g-sel').innerHTML=(TAPS?tapZones():'')+ghost+(c?'<g'+rotT(c)+'><rect x="'+c.x+'" y="'+c.y+'" width="'+c.w+'" height="'+c.h+'" fill="none" stroke="#4da3ff" vector-effect="non-scaling-stroke"/></g>':'');
   const HS=10.5/Z,CUR=['nwse','ns','nesw','ew','ew','nesw','ns','nwse'];
-  $('g-hdl').innerHTML=c?'<g'+rotT(c)+'>'+[[0,0],[.5,0],[1,0],[0,.5],[1,.5],[0,1],[.5,1],[1,1]].map((hh,k)=>'<rect data-h="'+hh[0]+','+hh[1]+'" x="'+(c.x+c.w*hh[0]-HS/2)+'" y="'+(c.y+c.h*hh[1]-HS/2)+'" width="'+HS+'" height="'+HS+'" fill="#fff" stroke="#4da3ff" style="cursor:'+CUR[k]+'-resize"/>').join('')+'</g>'+((cur.type!=='chart'&&(+cur.rot||(cur.rules||[]).some(r=>r.prop==='angle')))?(()=>{const [px,py]=pivot(c),X=c.x+px,Y=c.y+py;return '<g data-pv="1" style="cursor:move" aria-label="Точка повороту"><circle cx="'+X+'" cy="'+Y+'" r="'+HS+'" fill="transparent"/><circle cx="'+X+'" cy="'+Y+'" r="'+(HS*.55)+'" fill="none" stroke="#ff4b55" stroke-width="1.5" vector-effect="non-scaling-stroke"/><path d="M'+(X-HS)+' '+Y+'H'+(X+HS)+'M'+X+' '+(Y-HS)+'V'+(Y+HS)+'" stroke="#ff4b55" stroke-width="1.5" vector-effect="non-scaling-stroke"/></g>'})():''):'';
-  $('lay').innerHTML=W.map((w,i)=>[w,i]).reverse().map(([w,i])=>'<div data-i="'+i+'" tabindex="0" class="lr'+(w===cur?' on':'')+'"><span class="grip" aria-hidden="true">⋮⋮</span><span class="lz" title="Рівень">'+(i+1)+'</span><span class="lt">'+esc(w.id)+' <span style="color:var(--mut)">· '+TN[w.type]+(w.bind?' · '+esc(w.bind):'')+(w.show?' · видно, коли '+esc(w.show.param)+' = '+w.show.when:'')+(w.op!=null&&+w.op<100?' · ◐ '+w.op+'%':'')+(+w.rot&&w.type!=='chart'?' · ↻ '+(+w.rot)+'°':'')+(w.rules.length?' · умов: '+w.rules.length:'')+'</span></span><span class="lb"><button type="button" data-up="'+i+'" aria-label="Вище: '+esc(w.id)+'"'+(i===W.length-1?' disabled':'')+'>↑</button><button type="button" data-dn="'+i+'" aria-label="Нижче: '+esc(w.id)+'"'+(i===0?' disabled':'')+'>↓</button></span></div>').join('')+'<div id="lind"></div>';
+  $('g-hdl').innerHTML=c?'<g'+rotT(c)+'>'+[[0,0],[.5,0],[1,0],[0,.5],[1,.5],[0,1],[.5,1],[1,1]].map((hh,k)=>'<rect data-h="'+hh[0]+','+hh[1]+'" x="'+(c.x+c.w*hh[0]-HS/2)+'" y="'+(c.y+c.h*hh[1]-HS/2)+'" width="'+HS+'" height="'+HS+'" fill="#fff" stroke="#4da3ff" style="cursor:'+CUR[k]+'-resize"/>').join('')+'</g>'+((cur.type!=='chart'&&(+cur.rot||(cur.rules||[]).some(r=>r.prop==='angle')))?(()=>{const [px,py]=pivot(c),X=c.x+px,Y=c.y+py;return '<g data-pv="1" style="cursor:move" aria-label="Точка повороту"><circle cx="'+X+'" cy="'+Y+'" r="'+HS+'" fill="transparent"/><circle cx="'+X+'" cy="'+Y+'" r="'+(HS*.55)+'" fill="none" stroke="#ff4b55" stroke-width="1.5" vector-effect="non-scaling-stroke"/><path d="M'+(X-HS)+' '+Y+'H'+(X+HS)+'M'+X+' '+(Y-HS)+'V'+(Y+HS)+'" stroke="#ff4b55" stroke-width="1.5" vector-effect="non-scaling-stroke"/></g>'})():''):'';}
+  $('lay').innerHTML=W.map((w,i)=>[w,i]).reverse().map(([w,i])=>'<div data-i="'+i+'" tabindex="0" class="lr'+(w===cur?' on':'')+(w.hid?' hid':'')+'"><span class="grip" aria-hidden="true">⋮⋮</span><span class="lz" title="Рівень">'+(i+1)+'</span><span class="lt">'+esc(w.id)+' <span style="color:var(--mut)">· '+TN[w.type]+(w.bind?' · '+esc(w.bind):'')+(w.show?' · видно, коли '+esc(w.show.param)+' = '+w.show.when:'')+(w.op!=null&&+w.op<100?' · ◐ '+w.op+'%':'')+(+w.rot&&w.type!=='chart'?' · ↻ '+(+w.rot)+'°':'')+(w.rules.length?' · умов: '+w.rules.length:'')+(w.tap?' · ▶ '+esc(w.tap)+'()':'')+'</span></span><span class="lb"><button type="button" class="fl'+(w.hid?' on':'')+'" data-hid="'+i+'" title="'+(w.hid?'Сховано в редакторі — показати (на платі він є)':'Сховати в редакторі (на платі лишається)')+'">'+(w.hid?'◌':'👁')+'</button><button type="button" class="fl'+(w.lck?' on':'')+'" data-lck="'+i+'" title="'+(w.lck?'Заблоковано — розблокувати':'Заблокувати: на полотні не вибирається й не рухається')+'">'+(w.lck?'🔒':'🔓')+'</button><button type="button" data-up="'+i+'" aria-label="Вище: '+esc(w.id)+'"'+(i===W.length-1?' disabled':'')+'>↑</button><button type="button" data-dn="'+i+'" aria-label="Нижче: '+esc(w.id)+'"'+(i===0?' disabled':'')+'>↓</button></span></div>').join('')+'<div id="lind"></div>';
   const out=W.filter(w=>w.x<0||w.y<0||w.x+w.w>SW||w.y+w.h>SH).length,unused=P.filter(p=>!W.some(w=>w.bind===p.name||(w.show&&w.show.param===p.name)||(w.rmode==='param'&&w.rp===p.name)||w.mxp===p.name||w.myp===p.name||(w.omode==='param'&&w.opp===p.name)||w.rules.some(r=>r.param===p.name))).map(p=>p.name);
   const ws=[];if(out)ws.push(out+' за межами екрана');const nof=W.filter(w=>w.type==='image'&&!w.bind&&!IMGS[w.img]).map(w=>w.id);if(nof.length)ws.push('картинка без файлу: '+nof.join(', '));if(unused.length)ws.push('не використано: '+unused.join(', '));
   $('warn').textContent=ws.length?'Попередження: '+ws.join('; '):'Попереджень: 0';$('warn').style.color=ws.length?'var(--red)':'';
 }
+let TAPS=false,PREV=false,FLASH=null,PAL=['#4da3ff','#3fbf6a','#efa627','#e8251a'];const MIN_TAP=36;
+function tapBox(w0){const w=eff(w0);if(!(w.ang%360)||w.type==='chart')return[w.x,w.y,w.w,w.h];const [px,py]=pivot(w),X=w.x+px,Y=w.y+py,t=w.ang*Math.PI/180,c=Math.cos(t),s=Math.sin(t);
+  const xs=[],ys=[];[[w.x,w.y],[w.x+w.w,w.y],[w.x,w.y+w.h],[w.x+w.w,w.y+w.h]].forEach(([a,b])=>{const dx=a-X,dy=b-Y;xs.push(X+dx*c-dy*s);ys.push(Y+dx*s+dy*c)});
+  const l=Math.floor(Math.min(...xs)),tp=Math.floor(Math.min(...ys));return[l,tp,Math.ceil(Math.max(...xs))-l,Math.ceil(Math.max(...ys))-tp]}
+function tapAt(x,y){for(let i=W.length-1;i>=0;i--){const w=W[i];if(!w.tap||!eff(w).vis)continue;const [bx,by,bw,bh]=tapBox(w);if(x>=bx&&x<bx+bw&&y>=by&&y<by+bh)return w}return null}
+function tapZones(){return W.filter(w=>w.tap).map(w=>{const [x,y,ww,hh]=tapBox(w),vis=eff(w).vis,small=Math.min(ww,hh)<MIN_TAP,col=!vis?'#96a0aa':small?'#ff8c14':'#28b45a';
+  return '<rect x="'+x+'" y="'+y+'" width="'+Math.max(ww,1)+'" height="'+Math.max(hh,1)+'" fill="'+col+'" fill-opacity=".22" stroke="'+col+'" stroke-dasharray="4 3" vector-effect="non-scaling-stroke"/><text x="'+(x+2)+'" y="'+(y+10/Z+1)+'" fill="'+col+'" font-size="'+(10/Z)+'" font-family="system-ui,sans-serif">▶ '+esc(w.tap)+'</text>'}).join('')}
+function flashBox(){if(!FLASH)return '';const [x,y,ww,hh,hit]=FLASH;return '<rect x="'+x+'" y="'+y+'" width="'+ww+'" height="'+hh+'" fill="'+(hit?'#3cc86e':'#e65050')+'" fill-opacity=".55"/>'}
+function tapHint(w){if(!w.tap)return '';const [,, bw,bh]=tapBox(w),out=[];if(Math.min(bw,bh)<MIN_TAP)out.push('зона натиску '+bw+'×'+bh+' px — пальцем важко влучити, краще від '+MIN_TAP+' px');
+  const i=W.indexOf(w),b=tapBox(w);const over=W.slice(i+1).find(o=>{if(!o.tap)return false;const a=tapBox(o);return a[0]<=b[0]&&a[1]<=b[1]&&b[0]+b[2]<=a[0]+a[2]&&b[1]+b[3]<=a[1]+a[3]});
+  if(over)out.push('повністю під «'+over.id+'»: усі натиски дістануться «'+over.id+'»');return out.length?'⚠ '+out.join('; '):''}
+function swatches(){const w=cur,used=[...new Set(W.map(x=>x.col).filter(Boolean).map(c=>c.toLowerCase()))].filter(c=>!PAL.includes(c)).slice(0,8);
+  $('p-sw').innerHTML=PAL.map(c=>'<button type="button" data-sw="'+c+'" style="background:'+c+'" title="'+c+' — колір проєкту (правий клік — прибрати)"></button>').join('')+used.map(c=>'<button type="button" class="pg" data-sw="'+c+'" style="background:'+c+'" title="'+c+' — є на сторінці (правий клік — у кольори проєкту)"></button>').join('')+'<button type="button" class="add" data-swadd="1" title="Додати поточний колір у кольори проєкту">＋</button>'}
+function setPrev(on){PREV=on;FLASH=null;$('b-prev').setAttribute('aria-pressed',String(on));svg.style.cursor=on?'pointer':'';draw();if(on)note('Перегляд: клацайте по екрану як пальцем — видно, яка процедура спрацює (Esc — назад)')}
 function props(){const w=cur;
   $('p-id').value=w.id;$('p-type').innerHTML=Object.entries(TN).map(([k,l])=>'<option value="'+k+'"'+(k===w.type?' selected':'')+'>'+l+'</option>').join('');['x','y','w','h'].forEach(k=>$('p-'+k).value=w[k]);$('p-col').value=w.col;
   $('p-bind').innerHTML='<option value="">— не прив\'язано</option>'+P.filter(p=>ok(w,p)).map(p=>'<option'+(p.name===w.bind?' selected':'')+'>'+esc(p.name)+'</option>').join('');
@@ -467,6 +488,7 @@ function props(){const w=cur;
   {const fon=['text','value','bar','arc','chart'].includes(w.type);document.querySelectorAll('.ff-on').forEach(x=>x.classList.toggle('hide',!fon));if(fon)$('p-ff').value=w.font||'serif';}
   {const sc=w.type==='bar'||w.type==='arc';document.querySelectorAll('.sc-on').forEach(x=>x.classList.toggle('hide',!sc));if(sc){$('p-trk').value=w.track_color||'#23343f';$('p-strk').checked=w.show_track!==false;$('p-sval').checked=w.show_value!==false;$('p-trk').disabled=w.show_track===false}}
   {const FT=['text','value','bar','arc'],on=FT.includes(w.type);document.querySelectorAll('.fs-on').forEach(x=>x.classList.toggle('hide',!on));if(on){$('p-fs').value=w.fs||12;$('p-fs-h').textContent=''}$('e-fs').textContent=''}
+  swatches();$('p-tap').value=w.tap||'';$('tap-hint').textContent=tapHint(w);
   lookUI();syncXY();
   const ig=w.type==='image';$('imgp').classList.toggle('hide',!ig);$('e-i').textContent='';
   if(ig){const st=!w.bind,im=IMGS[w.img];$('i-src').textContent=st?'статичний файл (параметр не прив\'язано)':'шлях з параметра «'+w.bind+'»';
@@ -526,7 +548,9 @@ $('g-hit').addEventListener('click',e=>{const i=e.target.dataset.i;if(i!=null){c
 function moveLayer(w,to){const from=W.indexOf(w);to=Math.max(0,Math.min(W.length-1,to));if(from===to)return false;const fl=$('lay').contains(document.activeElement);W.splice(from,1);W.splice(to,0,w);cur=w;draw();props();
   if(fl){const r=$('lay').querySelector('.lr[data-i="'+to+'"]');if(r){r.focus();r.scrollIntoView({block:'nearest'})}}
   note(w.id+': рівень '+(to+1)+' з '+W.length+(to===W.length-1?' — над усіма':to===0?' — під усіма':''));return true}
-$('lay').addEventListener('click',e=>{if(layDragged)return;const u=e.target.dataset.up,dn=e.target.dataset.dn;
+$('lay').addEventListener('click',e=>{if(layDragged)return;const fh=e.target.dataset.hid,fk=e.target.dataset.lck;
+  if(fh!=null||fk!=null){const w=W[+(fh??fk)],k=fh!=null?'hid':'lck';w[k]=!w[k];note(w.id+': '+(k==='hid'?(w[k]?'сховано в редакторі (на платі є)':'показано'):(w[k]?'заблоковано на полотні':'розблоковано')));draw();return}
+  const u=e.target.dataset.up,dn=e.target.dataset.dn;
   if(u!=null){moveLayer(W[+u],+u+1);return}if(dn!=null){moveLayer(W[+dn],+dn-1);return}
   const d=e.target.closest('[data-i]');if(d){cur=W[+d.dataset.i];draw();props()}});
 let ld=null,layDragged=false;
@@ -658,6 +682,15 @@ function lockFields(){const w=cur;if(!w||!LOCK)return;const R=(w.rules||[]).filt
     ids.forEach(id=>{const el=$(id);if(!el)return;const base=id==='p-fmt'?!['text','value','bar'].includes(w.type):false;el.disabled=base||on;
       el.title=on?LNAME[k]+' задається в «Умовах» ('+[...new Set(rs.map(r=>r.param))].join(', ')+'); видаліть умову, щоб змінити тут':''})})}
 function shiftPos(w,dx,dy){w.x+=dx;w.y+=dy;shiftRules(w,w.rules||[],dx,dy)}
+svg.addEventListener('pointerdown',e=>{if(!PREV||e.button!==0)return;e.preventDefault();e.stopPropagation();const q=toSvg(e.clientX,e.clientY);if(!q)return;
+  const x=Math.floor(q.x),y=Math.floor(q.y),w=tapAt(x,y);if(w){FLASH=[...tapBox(w),true];note('Натиск ('+x+', '+y+') → «'+w.id+'»: '+w.tap+'()')}else{FLASH=[x-3,y-3,7,7,false];note('Натиск ('+x+', '+y+'): тут немає елемента з «При натиску»')}
+  draw();setTimeout(()=>{FLASH=null;draw()},450)},true);
+$('b-prev').addEventListener('click',()=>setPrev(!PREV));
+$('b-taps').addEventListener('click',()=>{TAPS=!TAPS;$('b-taps').setAttribute('aria-pressed',String(TAPS));draw()});
+document.addEventListener('keydown',e=>{if(e.key==='F5'){e.preventDefault();setPrev(!PREV)}else if(e.key==='Escape'&&PREV)setPrev(false)});
+$('p-tap').addEventListener('change',()=>{const v=$('p-tap').value.trim();if(v&&(!/^[A-Za-z_][A-Za-z0-9_]*$/.test(v)||KW.has(v))){note('При натиску: «'+v+'» — не назва функції Python');$('p-tap').value=cur.tap||'';return}cur.tap=v||undefined;draw();props()});
+$('p-sw').addEventListener('click',e=>{const b=e.target.closest('button');if(!b)return;if(b.dataset.swadd){const c=cur.col.toLowerCase();if(!PAL.includes(c))PAL.push(c);dirty();props();return}cur.col=b.dataset.sw;draw();props()});
+$('p-sw').addEventListener('contextmenu',e=>{const b=e.target.closest('[data-sw]');if(!b)return;e.preventDefault();const c=b.dataset.sw;const i=PAL.indexOf(c);if(i>=0)PAL.splice(i,1);else PAL.push(c);dirty();props()});
 $('g-hit').addEventListener('pointerdown',e=>{const i=e.target.dataset.i;if(i==null||e.button!==0)return;e.preventDefault();cur=W[+i];draw();props();
   const q=toSvg(e.clientX,e.clientY);if(!q)return;mv={mode:'m',q0:q,o:dragO(),moved:false};svg.setPointerCapture(e.pointerId)});
 $('g-hdl').addEventListener('pointerdown',e=>{if(e.button===0&&e.target.closest('[data-pv]')){e.preventDefault();e.stopPropagation();mv={mode:'pv',q0:toSvg(e.clientX,e.clientY)||{x:0,y:0},o:{},moved:false};svg.setPointerCapture(e.pointerId);return}const hd=e.target.dataset.h;if(hd==null||e.button!==0)return;e.preventDefault();e.stopPropagation();
@@ -704,7 +737,7 @@ var DB=null,UID=null,LS=null,DL=null,saveT=0,lastSaved='',loaded=false,newArm=fa
 const hhmm=()=>new Date().toLocaleTimeString('uk-UA',{hour:'2-digit',minute:'2-digit'});
 const sv=t=>{$('sv').textContent=t};
 const imgKey=k=>'img-'+k.replace(/[^A-Za-z0-9_.-]/g,'~');
-function sessObj(){return{v:1,display:{rot:D.rot,freq:D.freq,mcu:D.mcu,drv:D.drv,pins:D.pins},zoom:Z,pi,pages:PG.map(p=>({name:p.name,W:p.W,P:p.P,V:p.V}))}}
+function sessObj(){return{v:1,display:{rot:D.rot,freq:D.freq,mcu:D.mcu,drv:D.drv,pins:D.pins},zoom:Z,pi,colors:PAL,pages:PG.map(p=>({name:p.name,W:p.W,P:p.P,V:p.V}))}}
 const snapshot=()=>JSON.stringify(sessObj());
 const userImgs=()=>Object.entries(IMGS).filter(([k])=>!BUILTIN.has(k));
 function dirty(){if(!READY)return;clearTimeout(saveT);saveT=setTimeout(()=>saveNow(false),1500)}
@@ -720,7 +753,7 @@ async function saveNow(manual){clearTimeout(saveT);if(!loaded){saveT=setTimeout(
     else{sv('Збереження недоступне — експортуйте .espui');return}
     lastSaved=s;sv('Збережено о '+hhmm()+(DB?' у вашому акаунті':' в цьому браузері')+(skipped.length?' · без '+skipped.join(', ')+' (завеликі — експортуйте .espui)':''));if(manual)note('Сеанс збережено')}
   catch(err){const c=err&&err.code;sv('Не вдалося зберегти ('+(c||'помилка')+') — експортуйте .espui');if(c==='invalid_argument'&&manual)note('Сеанс завеликий для автозбереження. Експортуйте у файл')}}
-function applySession(d,imgs){if(!d||!Array.isArray(d.pages)||!d.pages.length||!d.pages.every(p=>p&&typeof p.name==='string'&&Array.isArray(p.W)&&Array.isArray(p.P)))throw 'Файл не схожий на проєкт ESP32 UI Builder';
+function applySession(d,imgs){if(!d||!Array.isArray(d.pages)||!d.pages.length||!d.pages.every(p=>p&&typeof p.name==='string'&&Array.isArray(p.W)&&Array.isArray(p.P)))throw 'Файл не схожий на проєкт ESP32 UI Builder';if(Array.isArray(d.colors))PAL=d.colors.filter(c=>/^#[0-9a-f]{6}$/i.test(c)).slice(0,32);
   Object.entries(imgs||{}).forEach(([k,v])=>{if(v&&typeof v.url==='string'&&/^data:image\//.test(v.url))IMGS[k]={name:String(v.name||k),url:v.url,nw:+v.nw||64,nh:+v.nh||64};if(Array.isArray(v.frames)&&v.frames.length>1&&v.frames.every(f=>typeof f==='string'&&/^data:image\//.test(f))){IMGS[k].frames=v.frames.slice(0,MAXF);IMGS[k].delay=Math.max(20,+v.delay||100)}});
   if(d.display){if([0,1,2,3].includes(d.display.rot))D.rot=d.display.rot;if(d.display.freq)D.freq=+d.display.freq;if(d.display.pins)D.pins=Object.assign({},D.pins,d.display.pins);if(MCU[d.display.mcu])D.mcu=d.display.mcu;if(DRV[d.display.drv]&&DRV[d.display.drv].mcus.includes(D.mcu))D.drv=d.display.drv}
   if(d.zoom)Z=Math.max(.5,Math.min(4,+d.zoom)||1.5);

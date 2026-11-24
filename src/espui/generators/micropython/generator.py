@@ -51,6 +51,7 @@ from espui.core.models import (
     StrParameter,
     Widget,
 )
+from espui.core.touch import tap_advice
 from espui.generators.micropython.drivers import get_driver, runtime_file
 from espui.generators.micropython.fonts import (
     FONTS_FILE,
@@ -196,7 +197,11 @@ def generate(
     content (for :mod:`espui.generators.micropython.memory`).
     """
     pages = [_pick_page(project, page_name)] if page_name is not None else list(project.pages)
-    warnings: list[str] = []
+    warnings: list[str] = [
+        f"сторінка «{page.name}»: {issue.message}"
+        for page in pages
+        for issue in tap_advice(project, [page])
+    ]
 
     driver = get_driver(project.display.driver)
     driver_files = driver.files_for(project.display.profile.controller)

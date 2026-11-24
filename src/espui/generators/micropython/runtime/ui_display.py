@@ -208,3 +208,18 @@ def create_touch(display, settings=None):
     import ui_touch
 
     return ui_touch.open_touch(settings, display, getattr(display, "spi", None), SPI_HZ, ROTATION)
+
+
+def calibrate_touch(display=None):
+    """Calibrate the XPT2046 on the screen: touch the four crosses one by one.
+
+    Prints "ESPUI-CAL x_min=… swap_xy=…": paste it into the editor (Дисплей →
+    Сенсорний екран → Калібрування) and generate again. Returns the values.
+    """
+    display = display or create()
+    touch = create_touch(display)
+    if touch is None:
+        raise ValueError("the display has no touch panel (Дисплей → Сенсорний екран)")
+    import ui_touch
+
+    return ui_touch.run_calibration(display, touch)

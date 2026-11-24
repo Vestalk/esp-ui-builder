@@ -1331,6 +1331,19 @@
           "default": false,
           "title": "Locked",
           "type": "boolean"
+        },
+        "group": {
+          "anyOf": [
+            {
+              "maxLength": 32,
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Group"
         }
       },
       "required": [
@@ -1371,6 +1384,14 @@
     },
     "editor": {
       "$ref": "#/$defs/EditorState"
+    },
+    "colors": {
+      "items": {
+        "type": "string"
+      },
+      "maxItems": 32,
+      "title": "Colors",
+      "type": "array"
     }
   },
   "required": [

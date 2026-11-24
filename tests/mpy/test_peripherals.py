@@ -231,3 +231,85 @@ def test_cyd_board_display_on_hspi_and_touch_on_its_own_bus(
     assert r["touch"] == "XPT2046"
     assert r["size"] == [240, 320]  # portrait (rotation 0)
     assert 33 in [entry[1] for entry in r["log"] if entry[0] == "out" and entry[2] == 1]
+
+
+CALIBRATION = (
+    FAKES
+    + r'''
+import ui_touch
+
+ui_touch.sleep_ms = lambda ms: None  # no waiting in the test
+TRUE = {"x_min": 3800, "x_max": 300, "y_min": 250, "y_max": 3700}  # x mirrored
+
+class Screen:
+    """Remembers where the last white cross was drawn (its centre)."""
+    def __init__(self, width, height):
+        self.width = width
+        self.height = height
+        self.cross = None
+        self.fills = 0
+    def fill_rect(self, x, y, w, h, color):
+        self.fills += 1
+        if color == ui_touch.WHITE and w == 17 and h == 1:
+            self.cross = (x + 8, y)
+
+class Panel:
+    """A pressed panel: raw readings of the cross on screen, then a release."""
+    def __init__(self, screen, rotation, swap):
+        self.screen = screen
+        self.width, self.height = ui_touch.portrait_size(screen, rotation)
+        self.rotation = rotation
+        self.swap = swap
+        self.left = 0
+        self.at = None
+    def raw(self):
+        if self.screen.cross != self.at:  # a new cross: press it
+            self.at = self.screen.cross
+            self.left = ui_touch.CAL_SAMPLES
+        if self.left == 0:
+            return None
+        self.left -= 1
+        px, py = ui_touch.to_portrait(*self.at, self.width, self.height, self.rotation)
+        rx = TRUE["x_min"] + px * (TRUE["x_max"] - TRUE["x_min"]) / (self.width - 1)
+        ry = TRUE["y_min"] + py * (TRUE["y_max"] - TRUE["y_min"]) / (self.height - 1)
+        rx, ry = int(rx), int(ry)
+        return (ry, rx, 900) if self.swap else (rx, ry, 900)
+
+for rotation in (0, 1, 2, 3):
+    for swap in (False, True):
+        w, h = (240, 320) if rotation % 2 == 0 else (320, 240)
+        screen = Screen(w, h)
+        panel = Panel(screen, rotation, swap)
+        cal = ui_touch.run_calibration(screen, panel)
+        out("cal%d%d" % (rotation, swap), [cal["x_min"], cal["x_max"], cal["y_min"],
+                                           cal["y_max"], cal["swap_xy"]])
+out("applied", [list(panel.cal), panel.swap_xy])
+out("portrait", [ui_touch.to_portrait(*ui_touch.to_screen(10, 20, 240, 320, r), 240, 320, r)
+                 for r in range(4)])
+'''
+)
+
+
+def test_touch_calibration_on_the_screen(run_mpy: RunMpy, tmp_path: Path) -> None:
+    """Four crosses, any rotation, mirrored and swapped axes: the panel's values come back."""
+    shutil.copy(RUNTIME_DIR / "ui_touch.py", tmp_path / "ui_touch.py")
+    proc = run_mpy(CALIBRATION)
+    assert proc.returncode == 0, proc.stderr + proc.stdout
+    printed = [line for line in proc.stdout.splitlines() if line.startswith("ESPUI-CAL ")]
+    assert len(printed) == 8  # the line for the editor, once per calibration
+    assert printed[-1].endswith("swap_xy=1")
+    r = {
+        line.split(" ", 1)[0]: json.loads(line.split(" ", 1)[1])
+        for line in proc.stdout.splitlines()
+        if not line.startswith("ESPUI-CAL ")
+    }
+    for rotation in range(4):
+        for swap in (0, 1):
+            x_min, x_max, y_min, y_max, swapped = r[f"cal{rotation}{swap}"]  # type: ignore[misc]
+            assert swapped is bool(swap)
+            for got, want in ((x_min, 3800), (x_max, 300), (y_min, 250), (y_max, 3700)):
+                assert abs(got - want) <= 3, (rotation, swap, got, want)
+    applied, swap_xy = r["applied"]  # type: ignore[misc]
+    assert swap_xy is True
+    assert abs(applied[0] - 3800) <= 3
+    assert r["portrait"] == [[10, 20]] * 4  # to_portrait undoes to_screen

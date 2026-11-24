@@ -5,10 +5,11 @@ from __future__ import annotations
 import sys
 from collections.abc import Sequence
 
-from PySide6.QtCore import QCoreApplication, QLibraryInfo, QTranslator
+from PySide6.QtCore import QCoreApplication, QLibraryInfo, QTimer, QTranslator
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from espui.gui.main_window import MainWindow
+from espui.gui.start_dialog import show_on_start
 
 
 def install_ukrainian(app: QCoreApplication) -> bool:
@@ -26,6 +27,7 @@ def run(argv: Sequence[str] | None = None, project: str | None = None) -> int:
     app.setOrganizationName("ESP UI Builder")
     app.setApplicationName("ESP UI Builder")
     window = MainWindow()
+    start = False
     if project:
         window.open_file(project)
     elif window.autosaver.recovery_available():
@@ -38,5 +40,10 @@ def run(argv: Sequence[str] | None = None, project: str | None = None) -> int:
             window.autosaver.restore()
         else:
             window.autosaver.discard_recovery()
+            start = show_on_start()
+    else:
+        start = show_on_start()
     window.show()
+    if start:  # once the window is up: new / open / recent / an example
+        QTimer.singleShot(0, window.show_start)
     return app.exec()

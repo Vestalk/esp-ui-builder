@@ -128,6 +128,15 @@ def _without(widget: Widget, names: set[str]) -> Widget:
     return widget.model_copy(update=update)
 
 
+def free_group_name(page: Page, taken: set[str] | None = None) -> str:
+    """``group_1``, ``group_2``…: not used on the page (nor in ``taken``)."""
+    used = {w.group for w in page.widgets if w.group} | (taken or set())
+    n = 1
+    while f"group_{n}" in used:
+        n += 1
+    return f"group_{n}"
+
+
 def paste(page: Page, text: str) -> Pasted:
     """``page`` with the copied widgets added on top (free ids, a free place, same layout)."""
     widgets, params = parse_payload(text)
@@ -148,10 +157,15 @@ def paste(page: Page, text: str) -> Pasted:
     if dropped:
         widgets = [_without(w, dropped) for w in widgets]
     offset = _free_offset(page, widgets)
+    groups: dict[str, str] = {}  # a pasted group is a new group (the original stays)
+    for widget in widgets:
+        if widget.group and widget.group not in groups:
+            groups[widget.group] = free_group_name(page, set(groups.values()))
     new_ids = []
     for widget in widgets:
         new_id = free_copy_id(page, widget.id)
         moved = shift_widget(widget, offset, offset)
-        page.widgets.append(moved.model_copy(update={"id": new_id}))
+        group = groups.get(widget.group) if widget.group else None
+        page.widgets.append(moved.model_copy(update={"id": new_id, "group": group}))
         new_ids.append(new_id)
     return Pasted(page, new_ids, notes)

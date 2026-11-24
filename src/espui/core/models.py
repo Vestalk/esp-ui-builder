@@ -402,6 +402,8 @@ class Widget(Model):
     """Hidden in the editor only (👁 in "Шари"): not drawn there, still on the board."""
     locked: bool = False
     """Locked in the editor (🔒 in "Шари"): the canvas can't pick or move it."""
+    group: str | None = Field(None, max_length=32)
+    """Editor group ("Згрупувати"): a click picks all its widgets; the board ignores it."""
 
     @model_validator(mode="before")
     @classmethod
@@ -672,6 +674,9 @@ class ImageAsset(Model):
 
 
 # ------------------------------------------------------------------ project
+MAX_PROJECT_COLORS = 32
+
+
 class EditorState(Model):
     zoom: float = Field(1.5, ge=0.5, le=4)
     page: int = Field(0, ge=0)
@@ -684,6 +689,8 @@ class Project(Model):
     images: dict[ImageKey, ImageAsset] = Field(default_factory=dict)
     """Key: short lowercase name, referenced by ``widget.image.file``."""
     editor: EditorState = Field(default_factory=EditorState)
+    colors: list[HexColor] = Field(default_factory=list, max_length=MAX_PROJECT_COLORS)
+    """The project's palette ("Кольори проєкту"): one click applies a colour in the editor."""
 
     def page(self, name: str) -> Page | None:
         return next((p for p in self.pages if p.name == name), None)

@@ -8,12 +8,14 @@ from __future__ import annotations
 
 import time
 from collections.abc import Sequence
+from functools import partial
 from pathlib import Path
 
 from PySide6.QtCore import QByteArray, QMimeData, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QCloseEvent, QGuiApplication, QKeySequence, QResizeEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QDockWidget,
     QFileDialog,
     QFrame,
@@ -50,6 +52,7 @@ from espui.gui import theme, wheel_guard
 from espui.gui.display_dialog import DisplayDialog, display_label
 from espui.gui.document import Document, new_project
 from espui.gui.generate_dialog import GenerateResultDialog
+from espui.gui.help import TOPICS, show_help
 from espui.gui.layers import LayersPanel
 from espui.gui.pages_bar import PagesBar
 from espui.gui.parameters import ParametersPanel, TestValuesPanel
@@ -61,6 +64,7 @@ from espui.gui.session import (
     recent_projects,
     remember_generate_dir,
 )
+from espui.gui.start_dialog import StartDialog
 from espui.gui.workspace import WIDGET_MIME, Workspace
 
 WIDGET_TITLES = {
@@ -225,6 +229,19 @@ class MainWindow(QMainWindow):
         self.act_fit = self._action("Вмістити все", self.workspace.fit_all, "Ctrl+9")
         self.act_grid = self._action("Сітка", self.toggle_grid, "Ctrl+'")
         self.act_grid.setCheckable(True)
+        self.act_taps = self._action("Зони натиску", self.workspace.set_show_taps, "Ctrl+Shift+T")
+        self.act_taps.setCheckable(True)
+        self.act_taps.setToolTip(
+            "Показати, де елементи з «При натиску» ловлять дотик (помаранчеві — замалі)"
+        )
+        self.act_preview = self._action(
+            "▶ Перегляд", self.workspace.set_preview, QKeySequence("F5")
+        )
+        self.act_preview.setCheckable(True)
+        self.act_preview.setToolTip(
+            "Перегляд: клацання — це натиск пальцем, видно, яка процедура спрацює (F5, Esc)"
+        )
+        self.workspace.preview_changed.connect(self._preview_changed)
         self.act_display = self._action("Дисплей…", self.edit_display)
         self.act_add_page = self._action(
             "Нова сторінка", lambda: self.doc.add_page(False), "Ctrl+Shift+N"
@@ -264,6 +281,8 @@ class MainWindow(QMainWindow):
         self.act_unhide_all = self._action(
             "Показати й розблокувати все на сторінці", self.unhide_all
         )
+        self.act_group = self._action("Згрупувати", self.group_selected, "Ctrl+Shift+G")
+        self.act_ungroup = self._action("Розгрупувати", self.ungroup_selected, "Ctrl+Shift+U")
         self.act_align = {
             how: self._action(title, lambda _=False, h=how: self.align_selected(h))
             for how, title in ALIGN_TITLES.items()
@@ -274,6 +293,8 @@ class MainWindow(QMainWindow):
         }
         self.act_generate = self._action("▶ Згенерувати…", self.generate_dialog, "Ctrl+G")
         self.act_about = self._action("Про програму", self.about)
+        self.act_start = self._action("Стартове вікно…", self.show_start)
+        self.act_help = self._action("Довідка…", self.show_context_help, QKeySequence("F1"))
 
     def _build_menus(self) -> None:
         bar = self.menuBar()
@@ -282,6 +303,7 @@ class MainWindow(QMainWindow):
             file.addAction(act)
         self.recent_menu = file.addMenu("Останні проєкти")
         self.recent_menu.aboutToShow.connect(self._fill_recent)
+        file.addAction(self.act_start)
         file.addSeparator()
         file.addAction(self.act_quit)
         edit = bar.addMenu("Правка")
@@ -299,6 +321,9 @@ class MainWindow(QMainWindow):
         for target in (self.workspace, self.layers):  # their keyboard shortcuts
             target.addActions([self.act_copy, self.act_paste, self.act_duplicate])
         arrange = bar.addMenu("Розташування")
+        arrange.addAction(self.act_group)
+        arrange.addAction(self.act_ungroup)
+        arrange.addSeparator()
         aligns = list(self.act_align.values())  # left, centre, right; top, middle, bottom
         for act in aligns[:3]:
             arrange.addAction(act)
@@ -309,6 +334,7 @@ class MainWindow(QMainWindow):
         for act in self.act_distribute.values():
             arrange.addAction(act)
         self.doc.selection_changed.connect(self._arrange_enabled)
+        self.doc.changed.connect(self._arrange_enabled)  # grouped / ungrouped
         self._arrange_enabled()
         view = bar.addMenu("Вигляд")
         for act in (
@@ -319,6 +345,9 @@ class MainWindow(QMainWindow):
             self.act_grid,
         ):
             view.addAction(act)
+        view.addSeparator()
+        view.addAction(self.act_taps)
+        view.addAction(self.act_preview)
         view.addSeparator()
         for dock in self.docks.values():
             view.addAction(dock.toggleViewAction())
@@ -332,7 +361,13 @@ class MainWindow(QMainWindow):
             self._action("Новий параметр…", self.parameters.add_dialog, "Ctrl+Shift+P")
         )
         bar.addMenu("Генерація").addAction(self.act_generate)
-        bar.addMenu("Довідка").addAction(self.act_about)
+        help_menu = bar.addMenu("Довідка")
+        help_menu.addAction(self.act_help)
+        for key in ("start", "touch", "keys"):
+            topic = self._action(TOPICS[key][0], partial(show_help, key, self))
+            help_menu.addAction(topic)
+        help_menu.addSeparator()
+        help_menu.addAction(self.act_about)
 
     def _build_toolbar(self) -> None:
         tools = self.addToolBar("Інструменти")
@@ -362,6 +397,7 @@ class MainWindow(QMainWindow):
         tools.addAction(self.tool_redo)
         tools.addSeparator()
         tools.addAction(self.act_grid)
+        tools.addAction(self.act_preview)
         tools.addAction(self.act_zoom_out)
         self.zoom_button = QToolButton()
         self.zoom_button.setObjectName("zoom_button")
@@ -395,13 +431,15 @@ class MainWindow(QMainWindow):
         for action, full, brief in (
             (self.act_zoom_out, "Зменшити", "−"),
             (self.act_zoom_in, "Збільшити", "+"),
-            (self.act_fit, "Вмістити все", "Вмістити"),
         ):
             action.setIconText(brief if short else full)
             action.setToolTip(full)
-        tiny = level >= 4
+        self.act_fit.setIconText("Вмістити все" if level < 1 else "Вмістити")
+        self.act_fit.setToolTip("Вмістити все")
+        tiny = level >= 1  # the menu and the tooltip still name the step
         self.tool_undo.setIconText("↶" if tiny else "↶ Скасувати")
         self.tool_redo.setIconText("↷" if tiny else "↷ Повторити")
+        self.act_preview.setIconText("Перегляд" if level < 1 else "▷")
         self.act_generate.setIconText("▶ Згенерувати" if level < 5 else "▶")
 
     def _fit_toolbar(self) -> None:
@@ -563,6 +601,34 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(message, 8000)
         return True
 
+    def context_topic(self) -> str:
+        """The help topic for where the keyboard focus is (F1)."""
+        focus = QApplication.focusWidget()
+        places: list[tuple[QWidget, str]] = [
+            (self.properties, "properties"),
+            (self.layers, "arrange"),
+            (self.parameters, "parameters"),
+            (self.test_values, "parameters"),
+            (self.workspace, "touch" if self.workspace.preview else "canvas"),
+        ]
+        while focus is not None:
+            for place, topic in places:
+                if focus is place:
+                    return topic
+            focus = focus.parentWidget()
+        return "start"
+
+    def show_context_help(self) -> None:
+        show_help(self.context_topic(), self)
+
+    def _preview_changed(self, on: bool) -> None:
+        """Esc in the canvas leaves "Перегляд" too: keep the button in step."""
+        self.act_preview.blockSignals(True)
+        self.act_preview.setChecked(on)
+        self.act_preview.blockSignals(False)
+        if not on:
+            self.statusBar().showMessage("Редагування", 2000)
+
     def _toggle_flag(self, field: str) -> None:
         """👁 / 🔒 for the selection (as the buttons in "Шари")."""
         if not self.doc.toggle_flag(field):
@@ -583,6 +649,25 @@ class MainWindow(QMainWindow):
             act.setToolTip("" if count > 1 else "Один елемент вирівнюється відносно екрана")
         for act in self.act_distribute.values():
             act.setEnabled(count >= 3)
+        self.act_group.setEnabled(count >= 2)
+        ids = self.doc.with_groups(self.doc.selected_ids)
+        self.act_ungroup.setEnabled(any(w.group for w in self.doc.page.widgets if w.id in ids))
+
+    def group_selected(self) -> bool:
+        name = self.doc.group_selected()
+        if name is None:
+            self.statusBar().showMessage("Згрупувати: виберіть щонайменше два елементи", 4000)
+            return False
+        self.statusBar().showMessage(
+            f"Група «{name}»: клік вибирає всю групу, Ctrl(⌘)+клік — один елемент", 6000
+        )
+        return True
+
+    def ungroup_selected(self) -> bool:
+        if not self.doc.ungroup_selected():
+            self.statusBar().showMessage("У виділенні немає груп", 4000)
+            return False
+        return True
 
     def align_selected(self, how: Align) -> bool:
         ids = self.doc.selected_ids
@@ -642,6 +727,22 @@ class MainWindow(QMainWindow):
         if answer == QMessageBox.StandardButton.Save:
             return self.save()
         return answer == QMessageBox.StandardButton.Discard
+
+    def show_start(self) -> str | None:
+        """The start window; what was chosen there is done right away."""
+        dialog = StartDialog(self)
+        if not dialog.exec():
+            return None
+        if dialog.choice == "new":
+            if self.confirm_discard():
+                self.autosaver.discard_recovery()
+                self.doc.load(new_project())
+                self.edit_display()  # a new project starts with its display
+        elif dialog.choice == "open":
+            self.open_dialog()
+        elif dialog.choice == "file" and dialog.path is not None:
+            self.open_recent(dialog.path)
+        return dialog.choice
 
     def new_project(self) -> None:
         if self.confirm_discard():

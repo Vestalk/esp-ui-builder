@@ -62,8 +62,11 @@ from espui.core.models import (
     Widget,
     WidgetType,
 )
+from espui.core.touch import tap_hint
 from espui.gui.document import Document
+from espui.gui.help import show_help
 from espui.gui.rules_editor import PROP_TITLES, RulesEditor
+from espui.gui.swatches import ColorSwatches, offer_in_dialog
 from espui.gui.widgets_catalog import TITLES, change_type, controlled_props
 
 PIVOT_TITLES = {
@@ -97,9 +100,13 @@ class ErrorLabel(QLabel):
 class Section(QWidget):
     """A block with a clickable ``▾ Title`` header; the collapsed state is remembered."""
 
-    def __init__(self, title: str, parent: QWidget | None = None) -> None:
+    def __init__(
+        self, title: str, parent: QWidget | None = None, help_topic: str | None = None
+    ) -> None:
         super().__init__(parent)
         self.title = title
+        self.summary = ""
+        """Shown after the title while the block is collapsed (e.g. "2" conditions)."""
         self.header = QToolButton()
         self.header.setObjectName("section_header")
         self.header.setCheckable(True)
@@ -113,7 +120,20 @@ class Section(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(2)
-        layout.addWidget(self.header)
+        top = QHBoxLayout()
+        top.setContentsMargins(0, 0, 0, 0)
+        top.setSpacing(2)
+        top.addWidget(self.header, 1)
+        self.help_button: QToolButton | None = None
+        if help_topic is not None:
+            self.help_button = QToolButton()
+            self.help_button.setObjectName("section_help")
+            self.help_button.setText("?")
+            self.help_button.setAutoRaise(True)
+            self.help_button.setToolTip(f"Довідка: {title}")
+            self.help_button.clicked.connect(lambda: show_help(help_topic, self))
+            top.addWidget(self.help_button)
+        layout.addLayout(top)
         layout.addWidget(self.body)
         collapsed = QSettings().value(f"sections/{title}", False, type=bool)
         self.header.setChecked(not collapsed)
@@ -124,11 +144,22 @@ class Section(QWidget):
     def collapsed(self) -> bool:
         return not self.header.isChecked()
 
+    def set_summary(self, summary: str) -> None:
+        self.summary = summary
+        self._title(not self.collapsed)
+
+    def set_collapsed(self, collapsed: bool) -> None:
+        self.header.setChecked(not collapsed)
+
+    def _title(self, expanded: bool) -> None:
+        extra = f" · {self.summary}" if self.summary and not expanded else ""
+        self.header.setText(("▾ " if expanded else "▸ ") + self.title + extra)
+
     def _toggled(self, expanded: bool) -> None:
-        self.header.setText(("▾ " if expanded else "▸ ") + self.title)
+        self._title(expanded)
         self.body.setVisible(expanded)
         # A collapsed block is only its header (layouts don't shrink a hidden body by themselves).
-        self.setMaximumHeight(16777215 if expanded else self.header.sizeHint().height() + 4)
+        self.setMaximumHeight(16777215 if expanded else self.header.sizeHint().height() + 6)
         QSettings().setValue(f"sections/{self.title}", not expanded)
 
 
@@ -162,6 +193,22 @@ class PropertiesPanel(QScrollArea):
         self.layout_ = QVBoxLayout(root)
         self.setWidget(root)
 
+        bar = QHBoxLayout()
+        bar.setContentsMargins(0, 0, 0, 0)
+        bar.addStretch(1)
+        self.collapse_all = QToolButton()
+        self.collapse_all.setObjectName("collapse_all")
+        self.collapse_all.setText("▸ Згорнути всі")
+        self.collapse_all.setAutoRaise(True)
+        self.collapse_all.clicked.connect(lambda: self.set_all_collapsed(True))
+        self.expand_all = QToolButton()
+        self.expand_all.setObjectName("expand_all")
+        self.expand_all.setText("▾ Розгорнути всі")
+        self.expand_all.setAutoRaise(True)
+        self.expand_all.clicked.connect(lambda: self.set_all_collapsed(False))
+        bar.addWidget(self.collapse_all)
+        bar.addWidget(self.expand_all)
+        self.layout_.addLayout(bar)
         self.empty = QLabel("Виберіть елемент на полотні або в шарах.")
         self.empty.setWordWrap(True)
         self.empty.setEnabled(False)
@@ -175,7 +222,7 @@ class PropertiesPanel(QScrollArea):
         self._build_look()
         self._build_image()
         self._build_chart()
-        self.rules_section = Section("Умови")
+        self.rules_section = Section("Умови", help_topic="rules")
         self.rules_editor = RulesEditor()
         self.rules_editor.changed.connect(lambda rules: self.set_field("rules", rules, "Умови"))
         self.rules_section.form.addRow(self.rules_editor)
@@ -190,10 +237,25 @@ class PropertiesPanel(QScrollArea):
         doc.changed.connect(self.load)
         self.load()
 
+    def sections(self) -> list[Section]:
+        return [
+            self.many,
+            self.main,
+            self.tap,
+            self.look,
+            self.image,
+            self.chart,
+            self.rules_section,
+        ]
+
+    def set_all_collapsed(self, collapsed: bool) -> None:
+        for section in self.sections():
+            section.set_collapsed(collapsed)
+
     # ------------------------------------------------------------------ blocks
     def _build_many(self) -> None:
         """Several widgets selected: what applies to all of them at once."""
-        s = self.many = Section("Кілька елементів")
+        s = self.many = Section("Кілька елементів", help_topic="arrange")
         self.many_label = QLabel()
         self.many_label.setObjectName("many_label")
         self.many_label.setWordWrap(True)
@@ -238,13 +300,34 @@ class PropertiesPanel(QScrollArea):
             self.arrange_buttons[key] = button
             arow.addWidget(button)
         arow.addStretch(1)
+        groups = QWidget()
+        grow = QHBoxLayout(groups)
+        grow.setContentsMargins(0, 0, 0, 0)
+        self.group_button = QPushButton("Згрупувати")
+        self.group_button.setObjectName("group_button")
+        self.group_button.setToolTip("Ctrl+Shift+G: клік вибиратиме всю групу, Ctrl(⌘)+клік — один")
+        self.group_button.clicked.connect(self.doc.group_selected)
+        self.ungroup_button = QPushButton("Розгрупувати")
+        self.ungroup_button.setObjectName("ungroup_button")
+        self.ungroup_button.setToolTip("Ctrl+Shift+U")
+        self.ungroup_button.clicked.connect(self.doc.ungroup_selected)
+        grow.addWidget(self.group_button)
+        grow.addWidget(self.ungroup_button)
+        grow.addStretch(1)
         self.many_delete = QPushButton("Видалити всі")
         self.many_delete.setObjectName("many_delete")
         self.many_delete.clicked.connect(lambda: self.doc.remove_widgets(self.doc.selected_ids))
         s.form.addRow(self.many_label)
         s.form.addRow("Колір", color)
+        self.many_swatches = ColorSwatches(
+            self.doc,
+            lambda c: self._set_many("color", c, "Колір"),
+            lambda: self.many_color_edit.text().strip() or None,
+        )
+        s.form.addRow("", self.many_swatches)
         s.form.addRow("Непрозорість", self.many_opacity)
         s.form.addRow("Розташування", arrange)
+        s.form.addRow("Група", groups)
         s.form.addRow(self.many_delete)
         self.layout_.addWidget(s)
 
@@ -284,6 +367,7 @@ class PropertiesPanel(QScrollArea):
         widgets = [w for w in self.doc.page.widgets if w.id in self.doc.selected_ids]
         if not widgets:
             return
+        offer_in_dialog(self.doc.project.colors)
         color = QColorDialog.getColor(QColor(widgets[0].color), self, "Колір")
         if color.isValid():
             self._set_many("color", color.name(), "Колір")
@@ -291,10 +375,15 @@ class PropertiesPanel(QScrollArea):
     def _load_many(self, ids: list[str]) -> None:
         widgets = [w for w in self.doc.page.widgets if w.id in ids]
         shown = ", ".join(w.id for w in widgets[:6]) + (" …" if len(widgets) > 6 else "")
+        names = sorted({w.group for w in widgets if w.group})
+        whole = len(names) == 1 and all(w.group == names[0] for w in widgets)
+        group = f" Група «{names[0]}»." if whole else ""
         self.many_label.setText(
-            f"Вибрано {len(widgets)}: {shown}. Колір і непрозорість — для всіх одразу; "
+            f"Вибрано {len(widgets)}: {shown}.{group} Колір і непрозорість — для всіх одразу; "
             "перетягування й стрілки рухають усі разом."
         )
+        self.group_button.setEnabled(not whole)
+        self.ungroup_button.setEnabled(bool(names))
         colors = {w.color for w in widgets}
         color = colors.pop() if len(colors) == 1 else ""
         self.many_color_edit.setText(color)
@@ -307,7 +396,7 @@ class PropertiesPanel(QScrollArea):
         self.many_opacity.setValue(opacities.pop() if len(opacities) == 1 else 100)
 
     def _build_main(self) -> None:
-        s = self.main = Section("Властивості")
+        s = self.main = Section("Властивості", help_topic="properties")
         self.id_edit = QLineEdit()
         self.id_edit.editingFinished.connect(self._id_edited)
         self.type_combo = QComboBox()
@@ -403,6 +492,12 @@ class PropertiesPanel(QScrollArea):
         s.form.addRow("Тип", self.type_combo)
         s.form.addRow("Позиція, розмір", geometry)
         s.form.addRow("Колір", color)
+        self.swatches = ColorSwatches(
+            self.doc,
+            lambda c: self.set_field("color", c),
+            lambda: self.doc.widget.color if self.doc.widget else None,
+        )
+        s.form.addRow("", self.swatches)
         s.form.addRow("Доріжка", self.track_row)
         s.form.addRow("", self.show_track)
         s.form.addRow("", self.show_value)
@@ -410,12 +505,20 @@ class PropertiesPanel(QScrollArea):
         s.form.addRow("Формат / текст", self.format_edit)
         s.form.addRow("Шрифт", font)
         s.form.addRow("Шрифт, px", self.size_spin)
-        s.form.addRow("При натиску", self.on_tap_edit)
         s.form.addRow(self.delete_button)
         self.layout_.addWidget(s)
+        # Touch: its own block (collapsed by those who don't use a touch panel).
+        tap = self.tap = Section("Натиск", help_topic="touch")
+        self.tap_hint = QLabel()
+        self.tap_hint.setObjectName("tap_hint")
+        self.tap_hint.setWordWrap(True)
+        self.tap_hint.setStyleSheet("color: #d9822b")
+        tap.form.addRow("При натиску", self.on_tap_edit)
+        tap.form.addRow(self.tap_hint)
+        self.layout_.addWidget(tap)
 
     def _build_look(self) -> None:
-        s = self.look = Section("Вигляд")
+        s = self.look = Section("Вигляд", help_topic="properties")
         self.controlled_hint = QLabel()
         self.controlled_hint.setObjectName("controlled_hint")
         self.controlled_hint.setWordWrap(True)
@@ -481,7 +584,7 @@ class PropertiesPanel(QScrollArea):
         return box
 
     def _build_image(self) -> None:
-        s = self.image = Section("Картинка")
+        s = self.image = Section("Картинка", help_topic="images")
         self.file_combo = QComboBox()
         self.file_combo.activated.connect(
             lambda _: self.set_image(file=self.file_combo.currentData())
@@ -562,7 +665,7 @@ class PropertiesPanel(QScrollArea):
         self.layout_.addWidget(s)
 
     def _build_chart(self) -> None:
-        s = self.chart = Section("Графік")
+        s = self.chart = Section("Графік", help_topic="parameters")
         self.axis_x = QLineEdit()
         self.axis_x.setMaxLength(16)
         self.axis_x.editingFinished.connect(lambda: self.set_chart(axis_x=self.axis_x.text()))
@@ -618,12 +721,20 @@ class PropertiesPanel(QScrollArea):
             many = len(ids) > 1
             self.empty.setVisible(widget is None)
             self.many.setVisible(many)
-            for section in (self.main, self.look, self.image, self.chart, *self.placeholders):
+            for section in (
+                self.main,
+                self.tap,
+                self.look,
+                self.image,
+                self.chart,
+                *self.placeholders,
+            ):
                 section.setVisible(widget is not None and not many)
             if widget is None:
                 self.error.setText("")
                 return
             if many:
+                self.many_swatches.refresh()
                 self._load_many(ids)
                 return
             self._load_main(widget)
@@ -654,6 +765,13 @@ class PropertiesPanel(QScrollArea):
         self.bind_combo.setEnabled(self.bind_combo.count() > 1)
         self.format_edit.setText(w.format)
         self.on_tap_edit.setText(w.on_tap or "")
+        self.swatches.refresh()
+        self.main.set_summary(w.id)
+        self.tap.set_summary(f"{w.on_tap}()" if w.on_tap else "")
+        self.rules_section.set_summary(str(len(w.rules)) if w.rules else "")
+        hint = tap_hint(self.doc.project, self.doc.page, w) if w.on_tap else ""
+        self.tap_hint.setText(f"⚠ {hint}" if hint else "")
+        self.tap_hint.setVisible(bool(hint))
         scale = w.type in SCALE_TYPES
         for row in (self.track_row, self.show_track, self.show_value):
             self.main.form.setRowVisible(row, scale)
@@ -807,6 +925,7 @@ class PropertiesPanel(QScrollArea):
         widget = self.doc.widget
         if widget is None:
             return
+        offer_in_dialog(self.doc.project.colors)
         color = QColorDialog.getColor(QColor(widget.color), self, "Колір")
         if color.isValid():
             self.set_field("color", color.name())
@@ -827,6 +946,7 @@ class PropertiesPanel(QScrollArea):
         widget = self.doc.widget
         if widget is None:
             return
+        offer_in_dialog(self.doc.project.colors)
         color = QColorDialog.getColor(QColor(widget.track_color), self, "Колір доріжки")
         if color.isValid():
             self.set_field("track_color", color.name())
