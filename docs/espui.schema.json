@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "ESP UI Builder project (.espui)",
-  "description": "Структура файлу проєкту. Узгодженість полів (унікальні назви, прив'язки, умови, піни за чипом) перевіряє програма при відкритті.",
+  "description": "The structure of a project file. The app checks the consistency of the fields (unique names, bindings, conditions, pins for the chip) when it opens a file.",
   "$defs": {
     "BoolParameter": {
       "additionalProperties": true,
@@ -557,7 +557,7 @@
           "type": "string"
         },
         "play": {
-          "default": "loop",
+          "default": "once",
           "enum": [
             "loop",
             "once"

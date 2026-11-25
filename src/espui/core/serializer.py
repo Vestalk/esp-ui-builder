@@ -119,11 +119,9 @@ def json_schema() -> dict[str, Any]:
     return {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "ESP UI Builder project (.espui)",
-        "description": (
-            tr(
-                "Структура файлу проєкту. Узгодженість полів (унікальні назви, прив'язки, "
-                "умови, піни за чипом) перевіряє програма при відкритті."
-            )
+        "description": (  # the same in every interface language
+            "The structure of a project file. The app checks the consistency of the fields "
+            "(unique names, bindings, conditions, pins for the chip) when it opens a file."
         ),
         **{k: v for k, v in schema.items() if k != "title"},
     }

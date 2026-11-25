@@ -134,7 +134,6 @@ EN: dict[str, str] = {
     "Умов скинуто до значень за замовчуванням: {reset}.": "Conditions reset to the default values: {reset}.",
     "Умов зі зміненим значенням: {replaced} (такого варіанта більше немає).": "Conditions with a changed value: {replaced} (that option no longer exists).",
     "Тестове значення «{name}» змінено на {fitted!r}: воно поза новими межами.": "The test value «{name}» changed to {fitted!r}: it was outside the new limits.",
-    "Структура файлу проєкту. Узгодженість полів (унікальні назви, прив'язки, умови, піни за чипом) перевіряє програма при відкритті.": "The structure of a project file. The app checks the consistency of the fields (unique names, bindings, conditions, pins for the chip) when it opens a file.",
     " або ": " or ",
     "«{name}»: очікується файл {kinds}": "«{name}»: a file {kinds} expected",
     "Це не JSON-файл проєкту (рядок {lineno}, стовпець {colno})": "This is not a JSON project file (line {lineno}, column {colno})",

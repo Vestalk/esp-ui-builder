@@ -243,8 +243,13 @@ def test_bound_image(tmp_path: Path) -> None:
     text = result.files["ui_main.py"].decode()
     assert 'path = p["icon"]' in text
     assert 'return _d.anim_info(self.p["icon"])' in text
-    assert 'ANIMS = (("w", True),)' in text
+    assert 'ANIMS = (("w", False),)' in text  # plays once by default
     assert result.warnings == ()
+    looped = project.model_copy(deep=True)
+    image = looped.pages[0].widgets[0].image
+    assert image is not None
+    image.play = "loop"  # "Програвати циклічно"
+    assert 'ANIMS = (("w", True),)' in generate(looped).files["ui_main.py"].decode()
 
 
 def test_bound_images_of_different_sizes_warn(tmp_path: Path) -> None:
