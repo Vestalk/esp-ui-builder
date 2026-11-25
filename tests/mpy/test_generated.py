@@ -1088,3 +1088,102 @@ def test_sensors_dashboard_matches_reference(
         "sensors",
         rotated=True,
     )
+
+
+FAKE_TIMER = """
+log = []
+
+class Timer:
+    PERIODIC = 1
+    current = None
+
+    def __init__(self, n):
+        self.n = n
+
+    def init(self, mode, period, callback):
+        self.period = period
+        self.callback = callback
+        Timer.current = self
+        log.append(["init", self.n, period])
+
+    def deinit(self):
+        log.append(["deinit"])
+        if Timer.current is self:
+            Timer.current = None
+"""
+
+AUTO_PLAY = """
+import machine, time, ui_draw
+clock = [time.ticks_ms()]
+ui_draw.ticks_ms = lambda: clock[0]
+
+def run(times):
+    for _ in range(times):
+        clock[0] += 1000                 # every animation is due each time
+        t = machine.Timer.current
+        if t is None:
+            return
+        t.callback(t)
+
+ui.draw(p)
+out("timer", [machine.Timer.current is not None, machine.log])
+run(14)
+out("after", [ui.playing("spinner"), ui.playing("loading"), machine.Timer.current is not None])
+d.blits = []
+ui.play_loading()                        # again, from the code of the project
+out("again", [ui.playing("loading"), len(d.blits) > 0])
+ui.stop()
+out("stopped", [machine.Timer.current is None])
+ui.draw(p, animate=False)                # frame by frame: no timer, tick() by hand
+out("manual", [machine.Timer.current is None, ui.tick(clock[0] + 100000) > 0])
+"""
+
+
+def test_animations_play_by_themselves(run_mpy: RunMpy, tmp_path: Path, pictures: Project) -> None:
+    """draw() starts a background timer: "once" stops on its last frame, "loop" goes on."""
+    (tmp_path / "machine.py").write_text(FAKE_TIMER, "utf-8")
+    run = run_page(run_mpy, tmp_path, pictures, AUTO_PLAY)
+    (timer,) = run.all("timer")
+    assert timer == [True, [["init", 0, 20]]]  # Timer(0), every 20 ms
+    assert run.all("after") == [[True, False, True]]  # loading finished, spinner loops on
+    assert run.all("again") == [[True, True]]  # ui.play_loading() restarts and redraws it
+    assert run.all("stopped") == [[True]]
+    assert run.all("manual") == [[True, True]]
+
+
+ALL_ONCE = """
+import machine, time, ui_draw
+clock = [time.ticks_ms()]
+ui_draw.ticks_ms = lambda: clock[0]
+
+def run(times):
+    for _ in range(times):
+        clock[0] += 1000
+        t = machine.Timer.current
+        if t is None:
+            return
+        t.callback(t)
+
+ui.draw(p)
+run(30)
+out("done", [ui.playing("spinner"), ui.playing("loading"), machine.Timer.current is None])
+ui.play_spinner()                        # wakes the timer up again
+out("woken", [machine.Timer.current is not None, ui.playing("spinner")])
+run(30)
+out("done2", [ui.playing("spinner"), machine.Timer.current is None])
+"""
+
+
+def test_once_animations_release_the_timer(
+    run_mpy: RunMpy, tmp_path: Path, pictures: Project
+) -> None:
+    """When every animation has played once, the timer stops; play() starts it again."""
+    project = pictures.model_copy(deep=True)
+    for widget in project.pages[0].widgets:
+        if widget.image is not None:
+            widget.image.play = "once"
+    (tmp_path / "machine.py").write_text(FAKE_TIMER, "utf-8")
+    run = run_page(run_mpy, tmp_path, project, ALL_ONCE)
+    assert run.all("done") == [[False, False, True]]
+    assert run.all("woken") == [[True, True]]
+    assert run.all("done2") == [[False, True]]

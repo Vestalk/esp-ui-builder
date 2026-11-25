@@ -36,6 +36,7 @@ from espui.core.models import (
 )
 from espui.core.params import unused_parameters, update_parameter
 from espui.gui.widgets_catalog import new_widget, shift_widget
+from espui.i18n import tr
 
 NEW_PAGE_NAME = "page"
 
@@ -118,7 +119,7 @@ class Document(QObject):
 
     @property
     def title(self) -> str:
-        return self.path.name if self.path else "Без назви.espui"
+        return self.path.name if self.path else tr("Без назви.espui")
 
     # ------------------------------------------------------------------ pages
     @property
@@ -149,7 +150,7 @@ class Document(QObject):
         if problem:
             return problem
         if any(p.name == name for i, p in enumerate(self.project.pages) if i != index):
-            return f"сторінка «{name}» вже є"
+            return tr("сторінка «{name}» вже є").format(name=name)
         return None
 
     def add_page(self, copy_current: bool = False) -> None:
@@ -238,7 +239,7 @@ class Document(QObject):
         """
         pasted = paste(self.page, text)
         names = ", ".join(f"«{i}»" for i in pasted.widget_ids)
-        self._replace_page(pasted.page, f"Вставити {names}")
+        self._replace_page(pasted.page, tr("Вставити {names}").format(names=names))
         self.select_many(pasted.widget_ids, pasted.widget_ids[-1])
         return pasted.notes
 
@@ -272,7 +273,7 @@ class Document(QObject):
         page.widgets = [w for w in page.widgets if w.id not in chosen]
         if len(page.widgets) == len(self.page.widgets):
             return False
-        self._replace_page(page, f"Видалити елементи: {len(chosen)}")
+        self._replace_page(page, tr("Видалити елементи: {v1}").format(v1=len(chosen)))
         self.select(None)
         return True
 
@@ -298,7 +299,10 @@ class Document(QObject):
         if not widgets:
             return False
         value = not all(getattr(w, field) for w in widgets)
-        what = {"editor_hidden": ("Сховати", "Показати"), "locked": ("Заблокувати", "Розблокувати")}
+        what = {
+            "editor_hidden": (tr("Сховати"), tr("Показати")),
+            "locked": (tr("Заблокувати"), tr("Розблокувати")),
+        }
         verb = what[field][0 if value else 1]
         text = f"{verb}: {widgets[0].id}" if len(widgets) == 1 else f"{verb}: {len(widgets)}"
         self.set_on_widgets([w.id for w in widgets], field, value, text, merge="")
@@ -329,7 +333,9 @@ class Document(QObject):
         if len(ids) < 2:
             return None
         name = free_group_name(self.page)
-        self.set_on_widgets(ids, "group", name, f"Згрупувати: {len(ids)}", merge="")
+        self.set_on_widgets(
+            ids, "group", name, tr("Згрупувати: {v1}").format(v1=len(ids)), merge=""
+        )
         self.select_many(ids, self.selected)
         return name
 
@@ -339,7 +345,9 @@ class Document(QObject):
         grouped = [w.id for w in self.page.widgets if w.id in ids and w.group]
         if not grouped:
             return False
-        self.set_on_widgets(grouped, "group", None, f"Розгрупувати: {len(grouped)}", merge="")
+        self.set_on_widgets(
+            grouped, "group", None, tr("Розгрупувати: {v1}").format(v1=len(grouped)), merge=""
+        )
         return True
 
     def unhide_all(self) -> bool:
@@ -351,7 +359,7 @@ class Document(QObject):
         page.widgets = [
             w.model_copy(update={"editor_hidden": False, "locked": False}) for w in page.widgets
         ]
-        self._replace_page(page, f"Показати й розблокувати: {len(ids)}")
+        self._replace_page(page, tr("Показати й розблокувати: {v1}").format(v1=len(ids)))
         return True
 
     def remove_widget(self, widget_id: str | None = None) -> bool:
@@ -361,7 +369,9 @@ class Document(QObject):
         self.undo_stack.push(_RemoveWidget(self, self.current, self.index_of(widget_id)))
         return True
 
-    def change_widget(self, new: Widget, text: str = "Змінити елемент", merge: str = "") -> None:
+    def change_widget(
+        self, new: Widget, text: str = tr("Змінити елемент"), merge: str = ""
+    ) -> None:
         """Replace the selected (or same-id) widget; ``merge`` joins repeated steps (nudges)."""
         old_id = self.selected if self.selected and self.page.widget(self.selected) else new.id
         index = self.index_of(old_id)
@@ -377,7 +387,7 @@ class Document(QObject):
         if problem:
             return problem
         if any(w.id == new_id and w.id != widget_id for w in self.page.widgets):
-            return f"елемент «{new_id}» вже є"
+            return tr("елемент «{new_id}» вже є").format(new_id=new_id)
         return None
 
     def move_layer(self, widget_id: str, to: int) -> bool:
@@ -399,31 +409,31 @@ class Document(QObject):
 
     def apply_font_to_all(self, font: str) -> None:
         """The font of every text-bearing widget of the current page."""
-        self.undo_stack.beginMacro("Шрифт для всіх елементів сторінки")
+        self.undo_stack.beginMacro(tr("Шрифт для всіх елементів сторінки"))
         for widget in list(self.page.widgets):
             if widget.font is not None and widget.font != font:
                 self.undo_stack.push(
                     _ChangeWidget(self, self.current, self.index_of(widget.id), widget,
-                                  widget.model_copy(update={"font": font}), "Шрифт", "")
+                                  widget.model_copy(update={"font": font}), tr("Шрифт"), "")
                 )  # fmt: skip
         self.undo_stack.endMacro()
 
     def apply_opacity_to_all(self, opacity: int) -> None:
         """The base opacity of every widget of the current page."""
-        self.undo_stack.beginMacro("Непрозорість для всіх елементів сторінки")
+        self.undo_stack.beginMacro(tr("Непрозорість для всіх елементів сторінки"))
         for widget in list(self.page.widgets):
             if widget.opacity != opacity:
                 new = widget.model_copy(update={"opacity": opacity})
                 index = self.index_of(widget.id)
                 self.undo_stack.push(
-                    _ChangeWidget(self, self.current, index, widget, new, "Непрозорість", "")
+                    _ChangeWidget(self, self.current, index, widget, new, tr("Непрозорість"), "")
                 )
         self.undo_stack.endMacro()
 
     def add_library_images(self, paths: list[str]) -> list[str]:
         """Add files to the project library (pictures for the board); returns their keys."""
         keys = []
-        self.undo_stack.beginMacro("Додати картинки")
+        self.undo_stack.beginMacro(tr("Додати картинки"))
         for path in paths:
             key, asset = import_image(path, set(self.project.images))
             self.undo_stack.push(_SetImageAsset(self, key, asset))
@@ -439,13 +449,13 @@ class Document(QObject):
     def add_image(self, path: str | Path) -> str:
         """Add a file to the project library and show it in the selected image widget."""
         key, asset = import_image(path, set(self.project.images))
-        self.undo_stack.beginMacro(f"Додати картинку «{asset.name}»")
+        self.undo_stack.beginMacro(tr("Додати картинку «{name}»").format(name=asset.name))
         self.undo_stack.push(_SetImageAsset(self, key, asset))
         widget = self.widget
         if widget is not None and widget.type == "image":
             settings = (widget.image or ImageSettings()).model_copy(update={"file": key})
             self.change_widget(
-                widget.model_copy(update={"image": settings, "bind": None}), "Картинка"
+                widget.model_copy(update={"image": settings, "bind": None}), tr("Картинка")
             )
         self.undo_stack.endMacro()
         return key
@@ -465,32 +475,34 @@ class Document(QObject):
     def parameter_problem(self, param: Parameter, old_name: str | None = None) -> str | None:
         """Why ``param`` can't be saved under its name (the edited one doesn't count)."""
         if any(p.name == param.name and p.name != old_name for p in self.page.parameters):
-            return f"параметр «{param.name}» вже є"
+            return tr("параметр «{name}» вже є").format(name=param.name)
         return None
 
     def add_parameter(self, param: Parameter) -> None:
         page = self.page.model_copy(deep=True)
         page.parameters.append(param)
-        self._replace_page(page, f"Новий параметр «{param.name}»")
+        self._replace_page(page, tr("Новий параметр «{name}»").format(name=param.name))
 
     def update_parameter(self, old_name: str, param: Parameter) -> list[str]:
         """Save an edited parameter; returns the summary of what else changed."""
         page, notes = update_parameter(self.page, old_name, param)
-        self._replace_page(page, f"Змінити параметр «{old_name}»")
+        self._replace_page(page, tr("Змінити параметр «{old_name}»").format(old_name=old_name))
         return notes
 
     def remove_parameter(self, name: str) -> int:
         """Delete a parameter and every reference to it; returns removed rules."""
         page = self.page.model_copy(deep=True)
         removed = page.remove_parameter(name)
-        self._replace_page(page, f"Видалити параметр «{name}»")
+        self._replace_page(page, tr("Видалити параметр «{name}»").format(name=name))
         return removed
 
     def set_test_value(self, name: str, value: ParamValue) -> None:
         """Preview value of a parameter; repeated changes (a slider) are one undo step."""
         page = self.page.model_copy(deep=True)
         page.test_values[name] = value
-        self._replace_page(page, f"Тестове значення «{name}»", merge=f"test:{name}")
+        self._replace_page(
+            page, tr("Тестове значення «{name}»").format(name=name), merge=f"test:{name}"
+        )
 
     def bind_parameter(self, widget_id: str, name: str) -> str:
         """A parameter dropped on a widget: bind it, or for a bool add "hide when false".
@@ -503,16 +515,25 @@ class Document(QObject):
             return ""
         if can_bind(widget.type, param):
             self.select(widget_id)
-            self.change_widget(widget.model_copy(update={"bind": name}), f"Прив'язати «{name}»")
-            return f"«{widget_id}» показує «{name}»."
+            self.change_widget(
+                widget.model_copy(update={"bind": name}),
+                tr("Прив'язати «{name}»").format(name=name),
+            )
+            return tr("«{widget_id}» показує «{name}».").format(widget_id=widget_id, name=name)
         if isinstance(param, BoolParameter):
             rule = Condition.model_validate(
                 {"if": [name, "==", False], "set": "visible", "to": False}
             )
             self.select(widget_id)
-            self.change_widget(widget.model_copy(update={"rules": [*widget.rules, rule]}), "Умова")
-            return f"«{widget_id}» ховається, коли «{name}» = false."
-        return f"«{widget_id}» не може показати параметр типу {param.type}."
+            self.change_widget(
+                widget.model_copy(update={"rules": [*widget.rules, rule]}), tr("Умова")
+            )
+            return tr("«{widget_id}» ховається, коли «{name}» = false.").format(
+                widget_id=widget_id, name=name
+            )
+        return tr("«{widget_id}» не може показати параметр типу {type}.").format(
+            widget_id=widget_id, type=param.type
+        )
 
     def add_parameter_widget(self, name: str, x: int, y: int) -> Widget | None:
         """A parameter dropped on free space: a new widget that shows it."""
@@ -544,13 +565,18 @@ class Document(QObject):
         color = color.lower()
         if color in self.project.colors or len(self.project.colors) >= MAX_PROJECT_COLORS:
             return False
-        self.set_colors([*self.project.colors, color], f"Додати колір {color}")
+        self.set_colors(
+            [*self.project.colors, color], tr("Додати колір {color}").format(color=color)
+        )
         return True
 
     def remove_color(self, color: str) -> bool:
         if color not in self.project.colors:
             return False
-        self.set_colors([c for c in self.project.colors if c != color], f"Прибрати колір {color}")
+        self.set_colors(
+            [c for c in self.project.colors if c != color],
+            tr("Прибрати колір {color}").format(color=color),
+        )
         return True
 
     def page_colors(self) -> list[str]:
@@ -568,9 +594,12 @@ class Document(QObject):
 
     def problems(self) -> list[str]:
         """For the status bar: widgets off the screen, unused parameters, images without a file."""
-        out = [f"поза екраном: {name}" for name in self.widgets_outside()]
+        out = [tr("поза екраном: {name}").format(name=name) for name in self.widgets_outside()]
         for page in self.project.pages:
-            out += [f"не використано: {page.name}/{n}" for n in unused_parameters(page)]
+            out += [
+                tr("не використано: {name}/{n}").format(name=page.name, n=n)
+                for n in unused_parameters(page)
+            ]
             for w in page.widgets:
                 file = w.image.file if w.image else None
                 if (
@@ -578,7 +607,9 @@ class Document(QObject):
                     and not w.bind
                     and (not file or file not in self.project.images)
                 ):
-                    out.append(f"картинка без файлу: {page.name}/{w.id}")
+                    out.append(
+                        tr("картинка без файлу: {name}/{id}").format(name=page.name, id=w.id)
+                    )
         return out
 
     def widgets_outside(self) -> list[str]:
@@ -595,7 +626,7 @@ class Document(QObject):
 # ---------------------------------------------------------------------- commands
 class _AddPage(QUndoCommand):
     def __init__(self, doc: Document, page: Page, index: int) -> None:
-        super().__init__(f"Додати сторінку «{page.name}»")
+        super().__init__(tr("Додати сторінку «{name}»").format(name=page.name))
         self.doc, self.page, self.index, self.previous = doc, page, index, doc.current
 
     def redo(self) -> None:
@@ -611,7 +642,9 @@ class _AddPage(QUndoCommand):
 
 class _RemovePage(QUndoCommand):
     def __init__(self, doc: Document, index: int) -> None:
-        super().__init__(f"Видалити сторінку «{doc.project.pages[index].name}»")
+        super().__init__(
+            tr("Видалити сторінку «{name}»").format(name=doc.project.pages[index].name)
+        )
         self.doc, self.index, self.previous = doc, index, doc.current
         self.page = doc.project.pages[index]
 
@@ -629,7 +662,7 @@ class _RemovePage(QUndoCommand):
 class _RenamePage(QUndoCommand):
     def __init__(self, doc: Document, index: int, name: str) -> None:
         old = doc.project.pages[index].name
-        super().__init__(f"Перейменувати «{old}» на «{name}»")
+        super().__init__(tr("Перейменувати «{old}» на «{name}»").format(old=old, name=name))
         self.doc, self.index, self.old, self.new = doc, index, old, name
 
     def redo(self) -> None:
@@ -653,7 +686,7 @@ class _SetColors(QUndoCommand):
 
 class _SetDisplay(QUndoCommand):
     def __init__(self, doc: Document, display: Display) -> None:
-        super().__init__("Налаштування дисплея")
+        super().__init__(tr("Налаштування дисплея"))
         self.doc, self.old, self.new = doc, doc.project.display, display
 
     def redo(self) -> None:
@@ -665,7 +698,7 @@ class _SetDisplay(QUndoCommand):
 
 class _AddWidget(QUndoCommand):
     def __init__(self, doc: Document, page: int, widget: Widget, index: int) -> None:
-        super().__init__(f"Додати «{widget.id}»")
+        super().__init__(tr("Додати «{id}»").format(id=widget.id))
         self.doc, self.page, self.widget, self.index = doc, page, widget, index
 
     def redo(self) -> None:
@@ -678,7 +711,7 @@ class _AddWidget(QUndoCommand):
 class _RemoveWidget(QUndoCommand):
     def __init__(self, doc: Document, page: int, index: int) -> None:
         self.widget = doc.project.pages[page].widgets[index]
-        super().__init__(f"Видалити «{self.widget.id}»")
+        super().__init__(tr("Видалити «{id}»").format(id=self.widget.id))
         self.doc, self.page, self.index = doc, page, index
 
     def redo(self) -> None:
@@ -720,7 +753,7 @@ class _ChangeWidget(QUndoCommand):
 class _MoveLayer(QUndoCommand):
     def __init__(self, doc: Document, page: int, src: int, to: int) -> None:
         widget = doc.project.pages[page].widgets[src]
-        super().__init__(f"Шар «{widget.id}»")
+        super().__init__(tr("Шар «{id}»").format(id=widget.id))
         self.doc, self.page, self.src, self.to = doc, page, src, to
 
     def redo(self) -> None:
@@ -736,7 +769,7 @@ class _SetImageAsset(QUndoCommand):
     """Add, replace or (``asset=None``) remove a picture of the library."""
 
     def __init__(self, doc: Document, key: str, asset: ImageAsset | None) -> None:
-        super().__init__(f"Картинка «{asset.name if asset else key}»")
+        super().__init__(tr("Картинка «{v1}»").format(v1=asset.name if asset else key))
         self.doc, self.key, self.new = doc, key, asset
         self.old = doc.project.images.get(key)
 

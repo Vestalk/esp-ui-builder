@@ -150,7 +150,7 @@ QWidget#pages_bar QTabBar::tab {{ color: {t.mut}; background: transparent;
                 border-top-right-radius: 6px; min-height: 28px; padding: 0 6px 0 12px; margin-right: 2px; }}
 QWidget#pages_bar QTabBar::tab:hover {{ color: {t.ink}; }}
 QWidget#pages_bar QTabBar::tab:selected {{ background: {t.panel}; border-color: {t.line}; color: {t.ink}; }}
-/* Tabs of docked panels (Шари · Тестові значення): the interface font, never cut short. */
+/* Tabs of docked panels (Layers · Test values): the interface font, never cut short. */
 QMainWindow > QTabBar::tab {{ color: {t.mut}; background: transparent; border: 1px solid transparent;
                 border-top: 0; border-bottom-left-radius: 6px; border-bottom-right-radius: 6px;
                 min-height: 26px; padding: 0 14px; margin-right: 2px; }}

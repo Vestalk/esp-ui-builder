@@ -14,6 +14,7 @@ from pathlib import Path
 from types import MappingProxyType
 
 from espui.core.hardware import Chip
+from espui.i18n import tr
 
 RUNTIME_DIR = Path(__file__).with_name("runtime")
 ADAPTER_FILE = "ui_display.py"
@@ -69,15 +70,17 @@ DRIVERS: Mapping[str, DriverInfo] = MappingProxyType(
     {
         "builtin": DriverInfo(
             key="builtin",
-            title="Вбудований (ui_st7789 / ui_tft)",
+            title=tr("Вбудований (ui_st7789 / ui_tft)"),
             module_file="ui_st7789.py",
             chips=ALL_CHIPS,
             license="MIT",
             origin="ESP UI Builder",
-            speed="висока: області пишуться одним блоком, заливка смугами по 4 КБ",
+            speed=tr("висока: області пишуться одним блоком, заливка смугами по 4 КБ"),
             note=(
-                "Рекомендований. Python + framebuf, стандартна прошивка. "
-                "ST7789 — ui_st7789.py; ILI9488, ILI9341, GC9A01 — ui_tft.py."
+                tr(
+                    "Рекомендований. Python + framebuf, стандартна прошивка. "
+                    "ST7789 — ui_st7789.py; ILI9488, ILI9341, GC9A01 — ui_tft.py."
+                )
             ),
             controllers=frozenset({"ST7789", "ILI9488", "ILI9341", "GC9A01"}),
             other_module_file="ui_tft.py",
@@ -89,10 +92,12 @@ DRIVERS: Mapping[str, DriverInfo] = MappingProxyType(
             chips=ALL_CHIPS,
             license="MIT",
             origin="https://github.com/russhughes/st7789py_mpy @ 98bc3a1f",
-            speed="нижча: заливка шматками по 512 Б, більший файл і більше RAM після імпорту",
+            speed=tr("нижча: заливка шматками по 512 Б, більший файл і більше RAM після імпорту"),
             note=(
-                "Сторонній Python-драйвер фіксованої версії; "
-                "власні шрифти драйвера не використовуються."
+                tr(
+                    "Сторонній Python-драйвер фіксованої версії; "
+                    "власні шрифти драйвера не використовуються."
+                )
             ),
             license_file="st7789py.LICENSE",
             sha256="a071cfc56a32006b3ddefcc1b68e158fbd7674df6a363cac59ea7ce9510ed958",

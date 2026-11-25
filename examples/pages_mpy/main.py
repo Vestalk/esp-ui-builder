@@ -20,16 +20,16 @@ ui.draw(p)
 def show(name):
     """Switch to page ``name`` and draw it completely."""
     global current, ui, p
+    ui.stop()  # the old page's background work (animations, touch)
     current = name
     ui, p = pages[name]
     ui.draw(p)
 
 
-# Demo: the next page every 5 s; in between the current page animates (tick) and updates.
+# Demo: the next page every 5 s. Animations play by themselves (ui.play_<id>() restarts one).
 order = list(pages)
 last = time.ticks_ms()
 while True:
-    ui.tick()
     if time.ticks_diff(time.ticks_ms(), last) >= 5000:
         last = time.ticks_ms()
         show(order[(order.index(current) + 1) % len(order)])

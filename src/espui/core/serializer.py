@@ -26,6 +26,7 @@ from espui.core.issues import (
 )
 from espui.core.migrate import migrate
 from espui.core.models import Project
+from espui.i18n import tr
 
 EXTENSIONS = (".espui", ".espui.json")
 """File names accepted by :func:`load`; :func:`save` writes ``.espui``."""
@@ -50,7 +51,9 @@ def loads(text: str, *, check: bool = True) -> Project:
         data = json.loads(text)
     except json.JSONDecodeError as error:
         raise ProjectFormatError(
-            f"Це не JSON-файл проєкту (рядок {error.lineno}, стовпець {error.colno})"
+            tr("Це не JSON-файл проєкту (рядок {lineno}, стовпець {colno})").format(
+                lineno=error.lineno, colno=error.colno
+            )
         ) from None
     return from_dict(data, check=check)
 
@@ -59,15 +62,18 @@ def load(path: str | os.PathLike[str], *, check: bool = True) -> Project:
     """Open a project file. ``check=False`` skips cross-field checks (drafts)."""
     file = Path(path)
     if not has_project_extension(file):
+        kinds = tr(" або ").join("*" + e for e in EXTENSIONS)
         raise ProjectFormatError(
-            f"«{file.name}»: очікується файл {' або '.join('*' + e for e in EXTENSIONS)}"
+            tr("«{name}»: очікується файл {kinds}").format(name=file.name, kinds=kinds)
         )
     try:
         text = file.read_text(encoding="utf-8-sig")
     except FileNotFoundError:
-        raise ProjectFormatError(f"Файл «{file}» не знайдено") from None
+        raise ProjectFormatError(tr("Файл «{file}» не знайдено").format(file=file)) from None
     except UnicodeDecodeError:
-        raise ProjectFormatError(f"«{file.name}» не є текстовим файлом UTF-8") from None
+        raise ProjectFormatError(
+            tr("«{name}» не є текстовим файлом UTF-8").format(name=file.name)
+        ) from None
     return loads(text, check=check)
 
 
@@ -114,8 +120,10 @@ def json_schema() -> dict[str, Any]:
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "title": "ESP UI Builder project (.espui)",
         "description": (
-            "Структура файлу проєкту. Узгодженість полів (унікальні назви, прив'язки, "
-            "умови, піни за чипом) перевіряє програма при відкритті."
+            tr(
+                "Структура файлу проєкту. Узгодженість полів (унікальні назви, прив'язки, "
+                "умови, піни за чипом) перевіряє програма при відкритті."
+            )
         ),
         **{k: v for k, v in schema.items() if k != "title"},
     }

@@ -51,6 +51,7 @@ from espui.generators.micropython.generator import defaults_source
 from espui.gui.document import Document
 from espui.gui.parameter_dialog import ParameterDialog
 from espui.gui.properties import Section
+from espui.i18n import tr
 
 PARAM_MIME = "application/x-espui-parameter"
 """Drag of a parameter row: its name as text."""
@@ -63,7 +64,7 @@ class ParameterList(QListWidget):
         super().__init__()
         self.setDragEnabled(True)
         self.setDragDropMode(QAbstractItemView.DragDropMode.DragOnly)
-        self.setToolTip("Перетягніть на елемент — прив'язка; на вільне місце — новий елемент")
+        self.setToolTip(tr("Перетягніть на елемент — прив'язка; на вільне місце — новий елемент"))
 
     def mimeData(self, items: Sequence[QListWidgetItem]) -> QMimeData:
         data = QMimeData()
@@ -81,11 +82,11 @@ class ParametersPanel(QWidget):
     def __init__(self, doc: Document) -> None:
         super().__init__()
         self.doc = doc
-        self.add_button = QPushButton("+ Параметр")
+        self.add_button = QPushButton(tr("+ Параметр"))
         self.add_button.clicked.connect(self.add_dialog)
         self.list = ParameterList()
         self.list.itemDoubleClicked.connect(lambda item: self.edit_dialog(item.data(NAME_ROLE)))
-        self.code_section = Section("Параметри в коді", help_topic="parameters")
+        self.code_section = Section(tr("Параметри в коді"), help_topic="parameters")
         self.code = QPlainTextEdit()
         self.code.setReadOnly(True)
         font = QFont("Menlo")
@@ -93,7 +94,7 @@ class ParametersPanel(QWidget):
         self.code.setFont(font)
         self.code.setMinimumHeight(120)
         self.code_section.form.addRow(self.code)
-        screen = Section("Параметри екрана", help_topic="parameters")
+        screen = Section(tr("Параметри екрана"), help_topic="parameters")
         screen.form.addRow(self.add_button)
         screen.form.addRow(self.list)
         layout = QVBoxLayout(self)
@@ -129,11 +130,11 @@ class ParametersPanel(QWidget):
             layout.addWidget(label, 1)
             edit = QToolButton()
             edit.setText("✎")
-            edit.setToolTip("Редагувати")
+            edit.setToolTip(tr("Редагувати"))
             edit.clicked.connect(lambda _=False, n=param.name: self.edit_dialog(n))
             remove = QToolButton()
             remove.setText("×")
-            remove.setToolTip("Видалити разом з усіма посиланнями")
+            remove.setToolTip(tr("Видалити разом з усіма посиланнями"))
             remove.clicked.connect(lambda _=False, n=param.name: self.remove(n))
             layout.addWidget(edit)
             layout.addWidget(remove)
@@ -171,7 +172,8 @@ class ParametersPanel(QWidget):
     def remove(self, name: str) -> int:
         removed = self.doc.remove_parameter(name)
         self.message.emit(
-            f"Параметр «{name}» видалено" + (f", умов: {removed}." if removed else ".")
+            tr("Параметр «{name}» видалено").format(name=name)
+            + (tr(", умов: {removed}.").format(removed=removed) if removed else ".")
         )
         return removed
 
@@ -183,7 +185,7 @@ def random_series(param: SeriesParameter) -> list[SeriesPoint]:
     mid, amp = (param.min + param.max) / 2, (param.max - param.min) / 3
     phase = random.uniform(0, 6.28)
 
-    labels = ["Пн", "Вт", "Ср", "Чт", "Пт", "Сб", "Нд", "P8"]
+    labels = [tr("Пн"), tr("Вт"), tr("Ср"), tr("Чт"), tr("Пт"), tr("Сб"), tr("Нд"), "P8"]
     return [
         SeriesPoint(
             x=float(i * 3) if param.x_kind == "number" else labels[i],
@@ -222,7 +224,7 @@ class TestValuesPanel(QScrollArea):
         self.editors.clear()
         self.series_errors.clear()
         if not params:
-            label = QLabel("На сторінці ще немає параметрів.")
+            label = QLabel(tr("На сторінці ще немає параметрів."))
             label.setEnabled(False)
             form.addRow(label)
         for param in params:
@@ -279,7 +281,7 @@ class TestValuesPanel(QScrollArea):
         edit.setPlaceholderText("x:y; x:y")
         edit.editingFinished.connect(lambda p=param, e=edit: self._series(p, e.text()))
         shuffle = QToolButton()
-        shuffle.setText("↻ випадкові")
+        shuffle.setText(tr("↻ випадкові"))
         shuffle.clicked.connect(lambda _=False, p=param: self._set(p.name, random_series(p)))
         row.addWidget(edit, 1)
         row.addWidget(shuffle)

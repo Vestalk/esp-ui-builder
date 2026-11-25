@@ -6,12 +6,13 @@ filled in by stages 11-14 (editing, properties, parameters, sessions).
 
 from __future__ import annotations
 
+import sys
 import time
 from collections.abc import Sequence
 from functools import partial
 from pathlib import Path
 
-from PySide6.QtCore import QByteArray, QMimeData, QSettings, Qt, QTimer, Signal
+from PySide6.QtCore import QByteArray, QMimeData, QProcess, QSettings, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QCloseEvent, QGuiApplication, QKeySequence, QResizeEvent
 from PySide6.QtWidgets import (
     QAbstractItemView,
@@ -66,20 +67,21 @@ from espui.gui.session import (
 )
 from espui.gui.start_dialog import StartDialog
 from espui.gui.workspace import WIDGET_MIME, Workspace
+from espui.i18n import LANGUAGES, language, save_language, tr
 
 WIDGET_TITLES = {
-    "rect": "Прямокутник",
-    "circle": "Коло",
-    "line": "Лінія",
-    "text": "Текст",
-    "value": "Число",
-    "bar": "Смуга прогресу",
-    "arc": "Дуга",
-    "image": "Картинка",
-    "chart": "Графік",
+    "rect": tr("Прямокутник"),
+    "circle": tr("Коло"),
+    "line": tr("Лінія"),
+    "text": tr("Текст"),
+    "value": tr("Число"),
+    "bar": tr("Смуга прогресу"),
+    "arc": tr("Дуга"),
+    "image": tr("Картинка"),
+    "chart": tr("Графік"),
 }
-FILE_FILTER = "Проєкт ESP UI Builder (*.espui *.espui.json)"
-IMPORT_FILTER = "Експорт з макета (*.espui.json *.json)"
+FILE_FILTER = tr("Проєкт ESP UI Builder (*.espui *.espui.json)")
+IMPORT_FILTER = tr("Експорт з макета (*.espui.json *.json)")
 
 
 class Palette(QListWidget):
@@ -99,7 +101,7 @@ class Palette(QListWidget):
             item = QListWidgetItem(WIDGET_TITLES[kind])
             item.setData(Qt.ItemDataRole.UserRole, kind)
             item.setToolTip(WIDGET_TITLES[kind])
-            item.setToolTip("Клік — у центр сторінки; перетягніть — у потрібне місце")
+            item.setToolTip(tr("Клік — у центр сторінки; перетягніть — у потрібне місце"))
             self.addItem(item)
         self.itemClicked.connect(
             lambda item: self.add_requested.emit(item.data(Qt.ItemDataRole.UserRole))
@@ -159,11 +161,11 @@ class MainWindow(QMainWindow):
         for source in (self.parameters, self.workspace):
             source.message.connect(lambda text: self.statusBar().showMessage(text, 8000))
         docks = (
-            ("Елементи", self.widget_palette, Qt.DockWidgetArea.LeftDockWidgetArea),
-            ("Властивості", self.properties, Qt.DockWidgetArea.RightDockWidgetArea),
-            ("Параметри", self.parameters, Qt.DockWidgetArea.RightDockWidgetArea),
-            ("Шари", self.layers, Qt.DockWidgetArea.BottomDockWidgetArea),
-            ("Тестові значення", self.test_values, Qt.DockWidgetArea.BottomDockWidgetArea),
+            (tr("Елементи"), self.widget_palette, Qt.DockWidgetArea.LeftDockWidgetArea),
+            (tr("Властивості"), self.properties, Qt.DockWidgetArea.RightDockWidgetArea),
+            (tr("Параметри"), self.parameters, Qt.DockWidgetArea.RightDockWidgetArea),
+            (tr("Шари"), self.layers, Qt.DockWidgetArea.BottomDockWidgetArea),
+            (tr("Тестові значення"), self.test_values, Qt.DockWidgetArea.BottomDockWidgetArea),
         )
         self.docks: dict[str, QDockWidget] = {}
         for title, widget, area in docks:
@@ -179,19 +181,19 @@ class MainWindow(QMainWindow):
             dock.setWidget(content)
             self.addDockWidget(area, dock)
             self.docks[title] = dock
-        self.tabifyDockWidget(self.docks["Шари"], self.docks["Тестові значення"])
-        self.docks["Шари"].raise_()
+        self.tabifyDockWidget(self.docks[tr("Шари")], self.docks[tr("Тестові значення")])
+        self.docks[tr("Шари")].raise_()
         self._full_dock_tabs()
         self.tabifiedDockWidgetActivated.connect(self._dock_tab_activated)
         self.resizeDocks(
-            [self.docks["Елементи"], self.docks["Властивості"]],
+            [self.docks[tr("Елементи")], self.docks[tr("Властивості")]],
             [150, 360],
             Qt.Orientation.Horizontal,
         )
-        self.resizeDocks([self.docks["Шари"]], [180], Qt.Orientation.Vertical)
+        self.resizeDocks([self.docks[tr("Шари")]], [180], Qt.Orientation.Vertical)
         # Right column: the properties of the selection get most of the height.
         self.resizeDocks(
-            [self.docks["Властивості"], self.docks["Параметри"]],
+            [self.docks[tr("Властивості")], self.docks[tr("Параметри")]],
             [620, 260],
             Qt.Orientation.Vertical,
         )
@@ -209,80 +211,84 @@ class MainWindow(QMainWindow):
 
     def _build_actions(self) -> None:
         keys = QKeySequence.StandardKey
-        self.act_new = self._action("Новий проєкт", self.new_project, QKeySequence(keys.New))
-        self.act_open = self._action("Відкрити…", self.open_dialog, QKeySequence(keys.Open))
-        self.act_save = self._action("Зберегти", self.save, QKeySequence(keys.Save))
-        self.act_save_as = self._action("Зберегти як…", self.save_as, QKeySequence(keys.SaveAs))
-        self.act_quit = self._action("Вийти", self.close, QKeySequence(keys.Quit))
-        self.act_import = self._action("Імпорт з макета (.espui.json)…", self.import_dialog)
-        self.act_undo = self.doc.undo_stack.createUndoAction(self, "Скасувати")
+        self.act_new = self._action(tr("Новий проєкт"), self.new_project, QKeySequence(keys.New))
+        self.act_open = self._action(tr("Відкрити…"), self.open_dialog, QKeySequence(keys.Open))
+        self.act_save = self._action(tr("Зберегти"), self.save, QKeySequence(keys.Save))
+        self.act_save_as = self._action(tr("Зберегти як…"), self.save_as, QKeySequence(keys.SaveAs))
+        self.act_quit = self._action(tr("Вийти"), self.close, QKeySequence(keys.Quit))
+        self.act_import = self._action(tr("Імпорт з макета (.espui.json)…"), self.import_dialog)
+        self.act_undo = self.doc.undo_stack.createUndoAction(self, tr("Скасувати"))
         self.act_undo.setShortcut(QKeySequence(keys.Undo))
-        self.act_redo = self.doc.undo_stack.createRedoAction(self, "Повторити")
+        self.act_redo = self.doc.undo_stack.createRedoAction(self, tr("Повторити"))
         self.act_redo.setShortcut(QKeySequence(keys.Redo))
         self.act_zoom_in = self._action(
-            "Збільшити", self.workspace.zoom_in, QKeySequence(keys.ZoomIn)
+            tr("Збільшити"), self.workspace.zoom_in, QKeySequence(keys.ZoomIn)
         )
         self.act_zoom_out = self._action(
-            "Зменшити", self.workspace.zoom_out, QKeySequence(keys.ZoomOut)
+            tr("Зменшити"), self.workspace.zoom_out, QKeySequence(keys.ZoomOut)
         )
-        self.act_zoom_100 = self._action("Масштаб 100 %", self.workspace.zoom_reset, "Ctrl+0")
-        self.act_fit = self._action("Вмістити все", self.workspace.fit_all, "Ctrl+9")
-        self.act_grid = self._action("Сітка", self.toggle_grid, "Ctrl+'")
+        self.act_zoom_100 = self._action(tr("Масштаб 100 %"), self.workspace.zoom_reset, "Ctrl+0")
+        self.act_fit = self._action(tr("Вмістити все"), self.workspace.fit_all, "Ctrl+9")
+        self.act_grid = self._action(tr("Сітка"), self.toggle_grid, "Ctrl+'")
         self.act_grid.setCheckable(True)
-        self.act_taps = self._action("Зони натиску", self.workspace.set_show_taps, "Ctrl+Shift+T")
+        self.act_taps = self._action(
+            tr("Зони натиску"), self.workspace.set_show_taps, "Ctrl+Shift+T"
+        )
         self.act_taps.setCheckable(True)
         self.act_taps.setToolTip(
-            "Показати, де елементи з «При натиску» ловлять дотик (помаранчеві — замалі)"
+            tr("Показати, де елементи з «При натиску» ловлять дотик (помаранчеві — замалі)")
         )
         self.act_preview = self._action(
-            "▶ Перегляд", self.workspace.set_preview, QKeySequence("F5")
+            tr("▶ Перегляд"), self.workspace.set_preview, QKeySequence("F5")
         )
         self.act_preview.setCheckable(True)
         self.act_preview.setToolTip(
-            "Перегляд: клацання — це натиск пальцем, видно, яка процедура спрацює (F5, Esc)"
+            tr("Перегляд: клацання — це натиск пальцем, видно, яка процедура спрацює (F5, Esc)")
         )
         self.workspace.preview_changed.connect(self._preview_changed)
-        self.act_display = self._action("Дисплей…", self.edit_display)
+        self.act_display = self._action(tr("Дисплей…"), self.edit_display)
         self.act_add_page = self._action(
-            "Нова сторінка", lambda: self.doc.add_page(False), "Ctrl+Shift+N"
+            tr("Нова сторінка"), lambda: self.doc.add_page(False), "Ctrl+Shift+N"
         )
-        self.act_copy_page = self._action("Копія сторінки", lambda: self.doc.add_page(True))
+        self.act_copy_page = self._action(tr("Копія сторінки"), lambda: self.doc.add_page(True))
         self.act_rename_page = self._action(
-            "Перейменувати сторінку…", lambda: self.pages_bar.rename()
+            tr("Перейменувати сторінку…"), lambda: self.pages_bar.rename()
         )
         self.act_delete = self._action(
-            "Видалити елемент", self._delete_selected, QKeySequence(QKeySequence.StandardKey.Delete)
+            tr("Видалити елемент"),
+            self._delete_selected,
+            QKeySequence(QKeySequence.StandardKey.Delete),
         )
         self.act_delete.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
         # On the canvas and in the layers only: in a text field Ctrl+C / V copy text.
         self.act_copy = self._action(
-            "Копіювати елемент", self.copy_widget, QKeySequence(QKeySequence.StandardKey.Copy)
+            tr("Копіювати елемент"), self.copy_widget, QKeySequence(QKeySequence.StandardKey.Copy)
         )
         self.act_paste = self._action(
-            "Вставити елемент", self.paste_widget, QKeySequence(QKeySequence.StandardKey.Paste)
+            tr("Вставити елемент"), self.paste_widget, QKeySequence(QKeySequence.StandardKey.Paste)
         )
-        self.act_duplicate = self._action("Дублювати елемент", self.duplicate_widget, "Ctrl+D")
+        self.act_duplicate = self._action(tr("Дублювати елемент"), self.duplicate_widget, "Ctrl+D")
         for act in (self.act_copy, self.act_paste, self.act_duplicate):
             act.setShortcutContext(Qt.ShortcutContext.WidgetShortcut)
         self.act_layer_up = self._action(
-            "Шар вище", lambda: self.doc.raise_layer(step=1), "Ctrl+Up"
+            tr("Шар вище"), lambda: self.doc.raise_layer(step=1), "Ctrl+Up"
         )
         self.act_layer_down = self._action(
-            "Шар нижче", lambda: self.doc.raise_layer(step=-1), "Ctrl+Down"
+            tr("Шар нижче"), lambda: self.doc.raise_layer(step=-1), "Ctrl+Down"
         )
         self.act_hide = self._action(
-            "Сховати / показати в редакторі",
+            tr("Сховати / показати в редакторі"),
             lambda: self._toggle_flag("editor_hidden"),
             "Ctrl+Shift+H",
         )
         self.act_lock = self._action(
-            "Заблокувати / розблокувати", lambda: self._toggle_flag("locked"), "Ctrl+Shift+L"
+            tr("Заблокувати / розблокувати"), lambda: self._toggle_flag("locked"), "Ctrl+Shift+L"
         )
         self.act_unhide_all = self._action(
-            "Показати й розблокувати все на сторінці", self.unhide_all
+            tr("Показати й розблокувати все на сторінці"), self.unhide_all
         )
-        self.act_group = self._action("Згрупувати", self.group_selected, "Ctrl+Shift+G")
-        self.act_ungroup = self._action("Розгрупувати", self.ungroup_selected, "Ctrl+Shift+U")
+        self.act_group = self._action(tr("Згрупувати"), self.group_selected, "Ctrl+Shift+G")
+        self.act_ungroup = self._action(tr("Розгрупувати"), self.ungroup_selected, "Ctrl+Shift+U")
         self.act_align = {
             how: self._action(title, lambda _=False, h=how: self.align_selected(h))
             for how, title in ALIGN_TITLES.items()
@@ -291,22 +297,22 @@ class MainWindow(QMainWindow):
             how: self._action(title, lambda _=False, h=how: self.distribute_selected(h))
             for how, title in DISTRIBUTE_TITLES.items()
         }
-        self.act_generate = self._action("▶ Згенерувати…", self.generate_dialog, "Ctrl+G")
-        self.act_about = self._action("Про програму", self.about)
-        self.act_start = self._action("Стартове вікно…", self.show_start)
-        self.act_help = self._action("Довідка…", self.show_context_help, QKeySequence("F1"))
+        self.act_generate = self._action(tr("▶ Згенерувати…"), self.generate_dialog, "Ctrl+G")
+        self.act_about = self._action(tr("Про програму"), self.about)
+        self.act_start = self._action(tr("Стартове вікно…"), self.show_start)
+        self.act_help = self._action(tr("Довідка…"), self.show_context_help, QKeySequence("F1"))
 
     def _build_menus(self) -> None:
         bar = self.menuBar()
-        file = bar.addMenu("Файл")
+        file = bar.addMenu(tr("Файл"))
         for act in (self.act_new, self.act_open, self.act_save, self.act_save_as, self.act_import):
             file.addAction(act)
-        self.recent_menu = file.addMenu("Останні проєкти")
+        self.recent_menu = file.addMenu(tr("Останні проєкти"))
         self.recent_menu.aboutToShow.connect(self._fill_recent)
         file.addAction(self.act_start)
         file.addSeparator()
         file.addAction(self.act_quit)
-        edit = bar.addMenu("Правка")
+        edit = bar.addMenu(tr("Правка"))
         edit.addAction(self.act_undo)
         edit.addAction(self.act_redo)
         edit.addSeparator()
@@ -320,7 +326,7 @@ class MainWindow(QMainWindow):
             edit.addAction(act)
         for target in (self.workspace, self.layers):  # their keyboard shortcuts
             target.addActions([self.act_copy, self.act_paste, self.act_duplicate])
-        arrange = bar.addMenu("Розташування")
+        arrange = bar.addMenu(tr("Розташування"))
         arrange.addAction(self.act_group)
         arrange.addAction(self.act_ungroup)
         arrange.addSeparator()
@@ -336,7 +342,7 @@ class MainWindow(QMainWindow):
         self.doc.selection_changed.connect(self._arrange_enabled)
         self.doc.changed.connect(self._arrange_enabled)  # grouped / ungrouped
         self._arrange_enabled()
-        view = bar.addMenu("Вигляд")
+        view = bar.addMenu(tr("Вигляд"))
         for act in (
             self.act_zoom_in,
             self.act_zoom_out,
@@ -349,19 +355,29 @@ class MainWindow(QMainWindow):
         view.addAction(self.act_taps)
         view.addAction(self.act_preview)
         view.addSeparator()
+        languages = view.addMenu("Мова / Language")  # the same in both languages
+        languages.setObjectName("language_menu")
+        self.language_actions: dict[str, QAction] = {}
+        for code, name in LANGUAGES.items():
+            act = languages.addAction(name)
+            act.setCheckable(True)
+            act.setChecked(code == language())
+            act.triggered.connect(partial(self.choose_language, code))
+            self.language_actions[code] = act
+        view.addSeparator()
         for dock in self.docks.values():
             view.addAction(dock.toggleViewAction())
-        display = bar.addMenu("Дисплей")
+        display = bar.addMenu(tr("Дисплей"))
         display.addAction(self.act_display)
-        pages = bar.addMenu("Сторінки")
+        pages = bar.addMenu(tr("Сторінки"))
         for act in (self.act_add_page, self.act_copy_page, self.act_rename_page):
             pages.addAction(act)
-        params = bar.addMenu("Параметри")
+        params = bar.addMenu(tr("Параметри"))
         params.addAction(
-            self._action("Новий параметр…", self.parameters.add_dialog, "Ctrl+Shift+P")
+            self._action(tr("Новий параметр…"), self.parameters.add_dialog, "Ctrl+Shift+P")
         )
-        bar.addMenu("Генерація").addAction(self.act_generate)
-        help_menu = bar.addMenu("Довідка")
+        bar.addMenu(tr("Генерація")).addAction(self.act_generate)
+        help_menu = bar.addMenu(tr("Довідка"))
         help_menu.addAction(self.act_help)
         for key in ("start", "touch", "keys"):
             topic = self._action(TOPICS[key][0], partial(show_help, key, self))
@@ -370,23 +386,23 @@ class MainWindow(QMainWindow):
         help_menu.addAction(self.act_about)
 
     def _build_toolbar(self) -> None:
-        tools = self.addToolBar("Інструменти")
+        tools = self.addToolBar(tr("Інструменти"))
         tools.setObjectName("toolbar")
         tools.setMovable(False)
         self.display_button = QToolButton()
         self.display_button.setObjectName("display_button")
         self.display_button.clicked.connect(self.edit_display)
-        self.display_button.setToolTip("Налаштування дисплея")
+        self.display_button.setToolTip(tr("Налаштування дисплея"))
         tools.addWidget(self.display_button)
         self.tools = tools
-        self.target_label = QLabel("  Ціль: MicroPython · MicroPico  ")
+        self.target_label = QLabel(tr("  Ціль: MicroPython · MicroPico  "))
         self.target_label.setObjectName("target")
         self.target_action = tools.addWidget(self.target_label)
         tools.addSeparator()
         # Short buttons; the menu entries name the step ("Скасувати Додати сторінку…").
         stack = self.doc.undo_stack
-        self.tool_undo = self._action("↶ Скасувати", stack.undo)
-        self.tool_redo = self._action("↷ Повторити", stack.redo)
+        self.tool_undo = self._action(tr("↶ Скасувати"), stack.undo)
+        self.tool_redo = self._action(tr("↷ Повторити"), stack.redo)
         stack.canUndoChanged.connect(self.tool_undo.setEnabled)
         stack.canRedoChanged.connect(self.tool_redo.setEnabled)
         stack.undoTextChanged.connect(self._undo_text)
@@ -401,7 +417,7 @@ class MainWindow(QMainWindow):
         tools.addAction(self.act_zoom_out)
         self.zoom_button = QToolButton()
         self.zoom_button.setObjectName("zoom_button")
-        self.zoom_button.setToolTip("Клік — 100 %")
+        self.zoom_button.setToolTip(tr("Клік — 100 %"))
         self.zoom_button.clicked.connect(self.workspace.zoom_reset)
         tools.addWidget(self.zoom_button)
         tools.addAction(self.act_zoom_in)
@@ -425,22 +441,24 @@ class MainWindow(QMainWindow):
         self.compact_level = level
         self.target_action.setVisible(level < 1)
         label = display_label(self.doc.project.display)
-        self.display_button.setText(f"Дисплей: {label}" if level < 2 else "Дисплей…")
-        self.display_button.setToolTip(f"Налаштування дисплея: {label}")
+        self.display_button.setText(
+            tr("Дисплей: {label}").format(label=label) if level < 2 else tr("Дисплей…")
+        )
+        self.display_button.setToolTip(tr("Налаштування дисплея: {label}").format(label=label))
         short = level >= 3
         for action, full, brief in (
-            (self.act_zoom_out, "Зменшити", "−"),
-            (self.act_zoom_in, "Збільшити", "+"),
+            (self.act_zoom_out, tr("Зменшити"), "−"),
+            (self.act_zoom_in, tr("Збільшити"), "+"),
         ):
             action.setIconText(brief if short else full)
             action.setToolTip(full)
-        self.act_fit.setIconText("Вмістити все" if level < 1 else "Вмістити")
-        self.act_fit.setToolTip("Вмістити все")
+        self.act_fit.setIconText(tr("Вмістити все") if level < 1 else tr("Вмістити"))
+        self.act_fit.setToolTip(tr("Вмістити все"))
         tiny = level >= 1  # the menu and the tooltip still name the step
-        self.tool_undo.setIconText("↶" if tiny else "↶ Скасувати")
-        self.tool_redo.setIconText("↷" if tiny else "↷ Повторити")
-        self.act_preview.setIconText("Перегляд" if level < 1 else "▷")
-        self.act_generate.setIconText("▶ Згенерувати" if level < 5 else "▶")
+        self.tool_undo.setIconText("↶" if tiny else tr("↶ Скасувати"))
+        self.tool_redo.setIconText("↷" if tiny else tr("↷ Повторити"))
+        self.act_preview.setIconText(tr("Перегляд") if level < 1 else "▷")
+        self.act_generate.setIconText(tr("▶ Згенерувати") if level < 5 else "▶")
 
     def _fit_toolbar(self) -> None:
         """The least compact level whose toolbar fits the window width."""
@@ -470,11 +488,11 @@ class MainWindow(QMainWindow):
         if narrow != self._narrow:
             self._narrow = narrow
             self.resizeDocks(
-                [self.docks["Елементи"]], [140 if narrow else 150], Qt.Orientation.Horizontal
+                [self.docks[tr("Елементи")]], [140 if narrow else 150], Qt.Orientation.Horizontal
             )
         # A shorter window takes the height from the right column without priorities: the
         # properties of the selection must not end up as a thin strip under "Параметри".
-        props, params = self.docks["Властивості"], self.docks["Параметри"]
+        props, params = self.docks[tr("Властивості")], self.docks[tr("Параметри")]
         if props.isVisible() and params.isVisible() and not props.isFloating():
             total = props.height() + params.height()
             if total > 0 and props.height() < 0.45 * total:
@@ -491,23 +509,25 @@ class MainWindow(QMainWindow):
 
     # Bound methods, not lambdas: Qt disconnects them when the window is gone.
     def _undo_text(self, text: str) -> None:
-        self.tool_undo.setToolTip(f"Скасувати: {text}")
+        self.tool_undo.setToolTip(tr("Скасувати: {text}").format(text=text))
 
     def _redo_text(self, text: str) -> None:
-        self.tool_redo.setToolTip(f"Повторити: {text}")
+        self.tool_redo.setToolTip(tr("Повторити: {text}").format(text=text))
 
     def update_memory(self) -> None:
         """Flash (code + fonts + pictures) and RAM (largest buffers) of the generated files."""
         try:
             memory = estimate_memory(self.doc.project)
         except (GenerationError, ProjectError, KeyError, ValueError) as error:
-            self.status_memory.setText("Пам'ять: —")
+            self.status_memory.setText(tr("Пам'ять: —"))
             self.status_memory.setToolTip(str(error))
             return
         self.status_memory.setText(memory.summary())
         self.status_memory.setToolTip(
-            "Флеш — файли для плати. RAM — буфер області малювання (×2 з прозорістю), "
-            "гліфи шрифтів і рядок найширшої картинки; інтерпретатор і модулі — окремо."
+            tr(
+                "Флеш — файли для плати. RAM — буфер області малювання (×2 з прозорістю), "
+                "гліфи шрифтів і рядок найширшої картинки; інтерпретатор і модулі — окремо."
+            )
         )
 
     def _build_status(self) -> None:
@@ -552,7 +572,7 @@ class MainWindow(QMainWindow):
     def _update_title(self) -> None:
         mark = " •" if self.doc.dirty else ""
         self.setWindowTitle(f"{self.doc.title}{mark} — ESP UI Builder")
-        self.status_saved.setText("Є незбережені зміни" if self.doc.dirty else "Збережено")
+        self.status_saved.setText(tr("Є незбережені зміни") if self.doc.dirty else tr("Збережено"))
 
     def _zoom_changed(self, zoom: float) -> None:
         self.zoom_button.setText(f"{round(zoom * 100)} %")
@@ -562,15 +582,15 @@ class MainWindow(QMainWindow):
         """The selected widget (with its parameters) to the clipboard."""
         text = self.doc.copy_widget()
         if text is None:
-            self.statusBar().showMessage("Спершу виберіть елемент", 4000)
+            self.statusBar().showMessage(tr("Спершу виберіть елемент"), 4000)
             return False
         mime = QMimeData()
         mime.setData(CLIPBOARD_MIME, QByteArray(text.encode("utf-8")))
         mime.setText(text)
         QGuiApplication.clipboard().setMimeData(mime)
         ids = self.doc.selected_ids
-        what = f"«{ids[0]}»" if len(ids) == 1 else f"елементів: {len(ids)}"
-        self.statusBar().showMessage(f"Скопійовано {what}", 4000)
+        what = f"«{ids[0]}»" if len(ids) == 1 else tr("елементів: {v1}").format(v1=len(ids))
+        self.statusBar().showMessage(tr("Скопійовано {what}").format(what=what), 4000)
         return True
 
     def paste_widget(self) -> bool:
@@ -585,7 +605,7 @@ class MainWindow(QMainWindow):
     def duplicate_widget(self) -> bool:
         text = self.doc.copy_widget()
         if text is None:
-            self.statusBar().showMessage("Спершу виберіть елемент", 4000)
+            self.statusBar().showMessage(tr("Спершу виберіть елемент"), 4000)
             return False
         return self._paste_text(text)
 
@@ -596,10 +616,35 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(str(error), 5000)
             return False
         ids = self.doc.selected_ids
-        what = f"«{ids[0]}»" if len(ids) == 1 else f"елементів: {len(ids)}"
-        message = f"Вставлено {what}" + ("; " + "; ".join(notes) if notes else "")
+        what = f"«{ids[0]}»" if len(ids) == 1 else tr("елементів: {v1}").format(v1=len(ids))
+        message = tr("Вставлено {what}").format(what=what) + (
+            "; " + "; ".join(notes) if notes else ""
+        )
         self.statusBar().showMessage(message, 8000)
         return True
+
+    def choose_language(self, code: str, _checked: bool = False) -> bool:
+        """Remember the language; it applies after a restart (offered right away)."""
+        for key, act in self.language_actions.items():
+            act.setChecked(key == code)
+        if code == language():
+            return False
+        save_language(code)
+        ask = {
+            "uk": "Мову інтерфейсу буде змінено на українську після перезапуску. "
+            "Перезапустити зараз?",
+            "en": "The interface language changes to English after a restart. Restart now?",
+        }[code]
+        answer = QMessageBox.question(self, "Мова / Language", ask)
+        if answer == QMessageBox.StandardButton.Yes and self.confirm_discard():
+            self.restart()
+        return True
+
+    def restart(self) -> None:
+        """Start the app again with the same arguments, then quit this one."""
+        self.autosaver.discard_recovery()
+        QProcess.startDetached(sys.executable, [*sys.orig_argv[1:]])
+        QApplication.quit()
 
     def context_topic(self) -> str:
         """The help topic for where the keyboard focus is (F1)."""
@@ -627,17 +672,19 @@ class MainWindow(QMainWindow):
         self.act_preview.setChecked(on)
         self.act_preview.blockSignals(False)
         if not on:
-            self.statusBar().showMessage("Редагування", 2000)
+            self.statusBar().showMessage(tr("Редагування"), 2000)
 
     def _toggle_flag(self, field: str) -> None:
         """👁 / 🔒 for the selection (as the buttons in "Шари")."""
         if not self.doc.toggle_flag(field):
-            self.statusBar().showMessage("Спершу виберіть елемент (на полотні або в «Шарах»)", 4000)
+            self.statusBar().showMessage(
+                tr("Спершу виберіть елемент (на полотні або в «Шарах»)"), 4000
+            )
 
     def unhide_all(self) -> bool:
         """Every widget of the page shown and unlocked again (one undo step)."""
         if not self.doc.unhide_all():
-            self.statusBar().showMessage("На сторінці немає схованих чи заблокованих", 4000)
+            self.statusBar().showMessage(tr("На сторінці немає схованих чи заблокованих"), 4000)
             return False
         return True
 
@@ -646,7 +693,7 @@ class MainWindow(QMainWindow):
         count = len(self.doc.selected_ids)
         for act in self.act_align.values():
             act.setEnabled(count >= 1)
-            act.setToolTip("" if count > 1 else "Один елемент вирівнюється відносно екрана")
+            act.setToolTip("" if count > 1 else tr("Один елемент вирівнюється відносно екрана"))
         for act in self.act_distribute.values():
             act.setEnabled(count >= 3)
         self.act_group.setEnabled(count >= 2)
@@ -656,16 +703,19 @@ class MainWindow(QMainWindow):
     def group_selected(self) -> bool:
         name = self.doc.group_selected()
         if name is None:
-            self.statusBar().showMessage("Згрупувати: виберіть щонайменше два елементи", 4000)
+            self.statusBar().showMessage(tr("Згрупувати: виберіть щонайменше два елементи"), 4000)
             return False
         self.statusBar().showMessage(
-            f"Група «{name}»: клік вибирає всю групу, Ctrl(⌘)+клік — один елемент", 6000
+            tr("Група «{name}»: клік вибирає всю групу, Ctrl(⌘)+клік — один елемент").format(
+                name=name
+            ),
+            6000,
         )
         return True
 
     def ungroup_selected(self) -> bool:
         if not self.doc.ungroup_selected():
-            self.statusBar().showMessage("У виділенні немає груп", 4000)
+            self.statusBar().showMessage(tr("У виділенні немає груп"), 4000)
             return False
         return True
 
@@ -673,20 +723,22 @@ class MainWindow(QMainWindow):
         ids = self.doc.selected_ids
         widgets = [w for w in self.doc.page.widgets if w.id in ids]
         moves = align(widgets, how, self.doc.project.display.size)
-        target = "екрана" if len(widgets) == 1 else "виділення"
+        target = tr("екрана") if len(widgets) == 1 else tr("виділення")
         if not self.doc.move_each(moves, ALIGN_TITLES[how]):
-            self.statusBar().showMessage(f"Уже вирівняно відносно {target}", 4000)
+            self.statusBar().showMessage(
+                tr("Уже вирівняно відносно {target}").format(target=target), 4000
+            )
             return False
         return True
 
     def distribute_selected(self, how: Distribute) -> bool:
         ids = self.doc.selected_ids
         if len(ids) < 3:
-            self.statusBar().showMessage("Розподілити: виберіть щонайменше три елементи", 4000)
+            self.statusBar().showMessage(tr("Розподілити: виберіть щонайменше три елементи"), 4000)
             return False
         widgets = [w for w in self.doc.page.widgets if w.id in ids]
         if not self.doc.move_each(distribute(widgets, how), DISTRIBUTE_TITLES[how]):
-            self.statusBar().showMessage("Проміжки вже однакові", 4000)
+            self.statusBar().showMessage(tr("Проміжки вже однакові"), 4000)
             return False
         return True
 
@@ -709,8 +761,8 @@ class MainWindow(QMainWindow):
             if outside:
                 QMessageBox.warning(
                     self,
-                    "Дисплей",
-                    "Після зміни орієнтації за межами екрана:\n" + "\n".join(outside),
+                    tr("Дисплей"),
+                    tr("Після зміни орієнтації за межами екрана:\n") + "\n".join(outside),
                 )
 
     def confirm_discard(self) -> bool:
@@ -718,8 +770,8 @@ class MainWindow(QMainWindow):
             return True
         answer = QMessageBox.question(
             self,
-            "Незбережені зміни",
-            f"Зберегти зміни в «{self.doc.title}»?",
+            tr("Незбережені зміни"),
+            tr("Зберегти зміни в «{title}»?").format(title=self.doc.title),
             QMessageBox.StandardButton.Save
             | QMessageBox.StandardButton.Discard
             | QMessageBox.StandardButton.Cancel,
@@ -753,7 +805,7 @@ class MainWindow(QMainWindow):
         if not self.confirm_discard():
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, "Відкрити проєкт", str(self._last_dir()), FILE_FILTER
+            self, tr("Відкрити проєкт"), str(self._last_dir()), FILE_FILTER
         )
         if path:
             self.open_file(path)
@@ -762,7 +814,7 @@ class MainWindow(QMainWindow):
         if not self.confirm_discard():
             return
         path, _ = QFileDialog.getOpenFileName(
-            self, "Імпорт з макета", str(self._last_dir()), IMPORT_FILTER
+            self, tr("Імпорт з макета"), str(self._last_dir()), IMPORT_FILTER
         )
         if path:
             self.open_file(path)
@@ -772,7 +824,7 @@ class MainWindow(QMainWindow):
         try:
             self.doc.open(path)
         except ProjectError as error:
-            QMessageBox.critical(self, "Не вдалося відкрити", str(error))
+            QMessageBox.critical(self, tr("Не вдалося відкрити"), str(error))
             return False
         QSettings().setValue("last_dir", str(Path(path).parent))
         if self.doc.path is not None:
@@ -784,7 +836,7 @@ class MainWindow(QMainWindow):
         self.recent_menu.clear()
         paths = recent_projects()
         if not paths:
-            self.recent_menu.addAction("— немає —").setEnabled(False)
+            self.recent_menu.addAction(tr("— немає —")).setEnabled(False)
         for path in paths:
             action = self.recent_menu.addAction(path.name)
             action.triggered.connect(lambda _=False, p=path: self.open_recent(p))
@@ -811,7 +863,7 @@ class MainWindow(QMainWindow):
 
     def save_as(self) -> bool:
         path, _ = QFileDialog.getSaveFileName(
-            self, "Зберегти проєкт", str(self._last_dir() / self.doc.title), FILE_FILTER
+            self, tr("Зберегти проєкт"), str(self._last_dir() / self.doc.title), FILE_FILTER
         )
         return bool(path) and self._save_to(Path(path))
 
@@ -820,17 +872,17 @@ class MainWindow(QMainWindow):
         try:
             saved = self.doc.save(path)
         except (OSError, ProjectError) as error:
-            QMessageBox.critical(self, "Не вдалося зберегти", str(error))
+            QMessageBox.critical(self, tr("Не вдалося зберегти"), str(error))
             return False
         self.autosaver.discard_recovery()
         add_recent(saved)
-        self.status_saved.setText(f"Збережено о {time.strftime('%H:%M')}")
+        self.status_saved.setText(tr("Збережено о {v1}").format(v1=time.strftime("%H:%M")))
         return True
 
     def generate_dialog(self) -> None:
         start = generate_dir(self.doc.path) or self._last_dir()
         folder = QFileDialog.getExistingDirectory(
-            self, f"Де створити папку «{self.output_name()}»", str(start)
+            self, tr("Де створити папку «{v1}»").format(v1=self.output_name()), str(start)
         )
         if folder and self.confirm_generate(Path(folder)):
             self.generate_to(Path(folder))
@@ -840,18 +892,20 @@ class MainWindow(QMainWindow):
         target = parent / self.output_name()
         existing = target.is_dir() and any(target.iterdir())
         text = (
-            f"Файли сторінки буде записано в папку:\n{target}\n\n"
+            tr("Файли сторінки буде записано в папку:\n{target}\n\n").format(target=target)
             + (
-                "Ця папка вже існує: згенеровані раніше файли буде замінено новими, "
-                "старі файли попередньої генерації — видалено. Інші ваші файли в ній лишаться."
+                tr(
+                    "Ця папка вже існує: згенеровані раніше файли буде замінено новими, "
+                    "старі файли попередньої генерації — видалено. Інші ваші файли в ній лишаться."
+                )
                 if existing
-                else "Папку буде створено."
+                else tr("Папку буде створено.")
             )
-            + "\n\nПродовжити?"
+            + tr("\n\nПродовжити?")
         )
         answer = QMessageBox.question(
             self,
-            "Згенерувати",
+            tr("Згенерувати"),
             text,
             QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
             QMessageBox.StandardButton.Cancel if existing else QMessageBox.StandardButton.Yes,
@@ -871,17 +925,21 @@ class MainWindow(QMainWindow):
         problems = check_project(self.doc.project)
         if problems:
             listed = "\n".join(f"• {p}" for p in problems[:12])
-            more = f"\n… ще {len(problems) - 12}" if len(problems) > 12 else ""
-            QMessageBox.warning(self, "Генерація", f"Спершу виправте проєкт:\n{listed}{more}")
+            more = tr("\n… ще {v1}").format(v1=len(problems) - 12) if len(problems) > 12 else ""
+            QMessageBox.warning(
+                self,
+                tr("Генерація"),
+                tr("Спершу виправте проєкт:\n{listed}{more}").format(listed=listed, more=more),
+            )
             return False
         try:
             result = generate(self.doc.project, source=self.doc.title)
             written = result.write(folder)
         except (OSError, ProjectError, GenerationError) as error:
-            QMessageBox.critical(self, "Генерація", str(error))
+            QMessageBox.critical(self, tr("Генерація"), str(error))
             return False
         remember_generate_dir(self.doc.path, parent)
-        self.statusBar().showMessage(f"Згенеровано в {folder}", 8000)
+        self.statusBar().showMessage(tr("Згенеровано в {folder}").format(folder=folder), 8000)
         self.last_result = GenerateResultDialog(
             folder, written, result.notes, result.warnings, self
         )
@@ -892,7 +950,9 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             "ESP UI Builder",
-            f"ESP UI Builder {__version__}\nКонструктор інтерфейсу дисплея ESP32 (MicroPython).",
+            tr(
+                "ESP UI Builder {__version__}\nКонструктор інтерфейсу дисплея ESP32 (MicroPython)."
+            ).format(__version__=__version__),
         )
 
     def _last_dir(self) -> Path:

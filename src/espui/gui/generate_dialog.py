@@ -20,7 +20,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-HINT = (
+from espui.i18n import tr
+
+HINT = tr(
     "Відкрийте цю папку у VS Code і виконайте команду MicroPico «Upload project to Pico»: "
     "завантажаться і .py, і картинки img/*.bin (.vscode/settings.json це вже налаштовує)."
 )
@@ -28,7 +30,11 @@ PATH_ROLE = Qt.ItemDataRole.UserRole
 
 
 def size_text(size: int) -> str:
-    return f"{size} Б" if size < 1024 else f"{size / 1024:.1f} КБ".replace(".", ",")
+    return (
+        tr("{size} Б").format(size=size)
+        if size < 1024
+        else tr("{v1:.1f} КБ").format(v1=size / 1024).replace(".", ",")
+    )
 
 
 class GenerateResultDialog(QDialog):
@@ -42,9 +48,9 @@ class GenerateResultDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.folder = folder
-        self.setWindowTitle("Згенеровано")
+        self.setWindowTitle(tr("Згенеровано"))
         self.resize(900, 560)
-        summary = QLabel(f"Папка: {folder}")
+        summary = QLabel(tr("Папка: {folder}").format(folder=folder))
         summary.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         lines = [*notes, *(f"⚠ {w}" for w in warnings)]
         self.info = QLabel("\n".join(lines))
@@ -70,7 +76,7 @@ class GenerateResultDialog(QDialog):
         split.addWidget(self.viewer)
         split.setSizes([300, 600])
 
-        self.open_folder = QPushButton("Відкрити папку")
+        self.open_folder = QPushButton(tr("Відкрити папку"))
         self.open_folder.clicked.connect(
             lambda: QDesktopServices.openUrl(QUrl.fromLocalFile(str(self.folder)))
         )
@@ -94,10 +100,12 @@ class GenerateResultDialog(QDialog):
         data = path.read_bytes()
         if path.suffix == ".bin":
             self.viewer.setPlainText(
-                f"{path.name}: RGB565, {len(data)} байт (картинка для дисплея)"
+                tr("{name}: RGB565, {v1} байт (картинка для дисплея)").format(
+                    name=path.name, v1=len(data)
+                )
             )
             return
         try:
             self.viewer.setPlainText(data.decode("utf-8"))
         except UnicodeDecodeError:
-            self.viewer.setPlainText(f"{path.name}: {len(data)} байт")
+            self.viewer.setPlainText(tr("{name}: {v1} байт").format(name=path.name, v1=len(data)))

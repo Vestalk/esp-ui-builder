@@ -291,8 +291,10 @@ def test_image_block(window: MainWindow, tmp_path: Path) -> None:
     assert widget.image is not None
     assert widget.image.file == "blink"
     assert panel.delay_spin.value() == 90
-    panel.once_radio.setChecked(True)
-    assert doc.widget.image.play == "once"  # type: ignore[union-attr]
+    assert doc.widget.image.play == "once"  # type: ignore[union-attr]  # by default: once
+    assert not panel.loop_check.isChecked()
+    panel.loop_check.setChecked(True)  # "Програвати циклічно"
+    assert doc.widget.image.play == "loop"  # type: ignore[union-attr]
     panel.delay_spin.setValue(120)
     assert doc.project.images["blink"].delay_ms == 120
     panel.native_size.click()

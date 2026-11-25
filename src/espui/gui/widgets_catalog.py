@@ -11,17 +11,18 @@ from typing import Any
 from espui.core.clipboard import shift_widget as shift_widget  # re-exported for the editor
 from espui.core.compat import can_bind, condition_props, mapping_props
 from espui.core.models import WIDGET_TYPES, Condition, MappingRule, Page, Widget, WidgetType
+from espui.i18n import tr
 
 TITLES: dict[str, str] = {
-    "rect": "Прямокутник",
-    "circle": "Коло",
-    "line": "Лінія",
-    "text": "Текст",
-    "value": "Число",
-    "bar": "Смуга прогресу",
-    "arc": "Дуга",
-    "image": "Картинка",
-    "chart": "Графік",
+    "rect": tr("Прямокутник"),
+    "circle": tr("Коло"),
+    "line": tr("Лінія"),
+    "text": tr("Текст"),
+    "value": tr("Число"),
+    "bar": tr("Смуга прогресу"),
+    "arc": tr("Дуга"),
+    "image": tr("Картинка"),
+    "chart": tr("Графік"),
 }
 
 
@@ -38,9 +39,9 @@ DEFAULTS: dict[str, Defaults] = {
     "rect": Defaults(120, 60, "#1d3a4a"),
     "circle": Defaults(40, 40, "#378add"),
     "line": Defaults(120, 0, "#56707c"),
-    "text": Defaults(150, 22, "#ffffff", "Текст", 16),
+    "text": Defaults(150, 22, "#ffffff", tr("Текст"), 16),
     "value": Defaults(130, 32, "#ffffff", "0", 24),
-    "bar": Defaults(200, 36, "#5dcaa5", "Підпис", 12),
+    "bar": Defaults(200, 36, "#5dcaa5", tr("Підпис"), 12),
     "arc": Defaults(120, 66, "#efa627", "", 14),
     "image": Defaults(64, 64, "#ffffff"),
     "chart": Defaults(200, 60, "#4da3ff"),
@@ -91,7 +92,9 @@ def change_type(widget: Widget, kind: WidgetType, page: Page) -> tuple[Widget, l
     bind = widget.bind
     if param is not None and not can_bind(kind, param):
         messages.append(
-            f"Прив'язку до «{param.name}» знято: {TITLES[kind].lower()} не може її показати."
+            tr("Прив'язку до «{name}» знято: {v1} не може її показати.").format(
+                name=param.name, v1=TITLES[kind].lower()
+            )
         )
         bind = None
     rules = []
@@ -103,7 +106,9 @@ def change_type(widget: Widget, kind: WidgetType, page: Page) -> tuple[Widget, l
         else:
             dropped += 1
     if dropped:
-        messages.append(f"Умов, що не підходять до нового типу, видалено: {dropped}.")
+        messages.append(
+            tr("Умов, що не підходять до нового типу, видалено: {dropped}.").format(dropped=dropped)
+        )
     data: dict[str, Any] = {
         "id": widget.id,
         "type": kind,
@@ -139,7 +144,7 @@ def badges(widget: Widget) -> str:
     conditions = sum(isinstance(r, Condition) for r in widget.rules)
     mappings = sum(isinstance(r, MappingRule) for r in widget.rules)
     if conditions + mappings:
-        out.append(f"умов: {conditions + mappings}")
+        out.append(tr("умов: {v1}").format(v1=conditions + mappings))
     return " ".join(out)
 
 
@@ -169,7 +174,7 @@ def condition_default_to(prop: str, widget: Widget) -> Any:
     """Value a new condition sets (the mock-up's ``dto``)."""
     return {
         "color": "#ff4b55",
-        "text": "ТРИВОГА",
+        "text": tr("ТРИВОГА"),
         "visible": False,
         "opacity": 30,
         "angle": 45,

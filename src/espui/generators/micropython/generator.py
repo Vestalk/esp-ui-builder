@@ -64,6 +64,7 @@ from espui.generators.micropython.fonts import build as build_fonts
 from espui.generators.micropython.fonts import collect as collect_chars
 from espui.generators.micropython.images import ImagePlan
 from espui.generators.micropython.images import plan as plan_images
+from espui.i18n import tr
 
 DRAW_FILE = "ui_draw.py"
 VSCODE_SETTINGS = ".vscode/settings.json"
@@ -198,7 +199,7 @@ def generate(
     """
     pages = [_pick_page(project, page_name)] if page_name is not None else list(project.pages)
     warnings: list[str] = [
-        f"сторінка «{page.name}»: {issue.message}"
+        tr("сторінка «{name}»: {message}").format(name=page.name, message=issue.message)
         for page in pages
         for issue in tap_advice(project, [page])
     ]
@@ -276,8 +277,10 @@ def generate(
     actions = sorted({w.tap for c in contexts for w in c["taps"]})
     if actions and display.touch is None:
         warnings.append(
-            "Є елементи з «При натиску», але сенсорний екран не ввімкнено "
-            "(Дисплей → Сенсорний екран): на платі дотики не читатимуться."
+            tr(
+                "Є елементи з «При натиску», але сенсорний екран не ввімкнено "
+                "(Дисплей → Сенсорний екран): на платі дотики не читатимуться."
+            )
         )
     main_context = {
         **contexts[0],
@@ -301,7 +304,9 @@ def _pick_page(project: Project, name: str | None) -> Page:
     page = project.page(name)
     if page is None:
         known = ", ".join(p.name for p in project.pages)
-        raise GenerationError(f"Немає сторінки «{name}»; є: {known}")
+        raise GenerationError(
+            tr("Немає сторінки «{name}»; є: {known}").format(name=name, known=known)
+        )
     return page
 
 
@@ -685,7 +690,9 @@ def _widget_code(
     kind = widget.type
     if kind not in SUPPORTED_TYPES:
         warnings.append(
-            f"Елемент «{widget.id}» ({kind}) пропущено: підтримка — етап {LATER_STAGE[kind]}."
+            tr("Елемент «{id}» ({kind}) пропущено: підтримка — етап {v1}.").format(
+                id=widget.id, kind=kind, v1=LATER_STAGE[kind]
+            )
         )
         return None
 
@@ -729,13 +736,17 @@ def _widget_code(
         call = _call("_d.label", args)
         if "angle" in dynamic and widget.w * widget.h > MAX_ROTATED_TEXT_PX:
             warnings.append(
-                f"Елемент «{widget.id}»: текст {widget.w}×{widget.h} з кутом від параметра "
-                f"повертається попіксельно й малюватиметься повільно (більше "
-                f"{MAX_ROTATED_TEXT_PX} px); зменште його або зробіть кут сталим."
+                tr(
+                    "Елемент «{id}»: текст {w}×{h} з кутом від параметра повертається "
+                    "попіксельно й малюватиметься повільно (більше {MAX_ROTATED_TEXT_PX} "
+                    "px); зменште його або зробіть кут сталим."
+                ).format(
+                    id=widget.id, w=widget.w, h=widget.h, MAX_ROTATED_TEXT_PX=MAX_ROTATED_TEXT_PX
+                )
             )
     elif kind == "image":
         call, code.anim = _image_code(widget, page, [*pos], images, extra)
-        code.loop = widget.image is None or widget.image.play == "loop"
+        code.loop = widget.image is not None and widget.image.play == "loop"
     elif kind == "chart":
         args = ["fb", *pos, *_chart_args(widget, param, value), color, font_ref]
         call = _call("_d.chart", args)

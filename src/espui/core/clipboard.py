@@ -17,6 +17,7 @@ from typing import Any
 from pydantic import TypeAdapter, ValidationError
 
 from espui.core.models import Condition, MappingRule, Page, Parameter, Widget
+from espui.i18n import tr
 
 MIME = "application/x-espui-widget"
 """Clipboard type of a copied widget (its text is the same JSON)."""
@@ -62,17 +63,17 @@ def parse_payload(text: str) -> tuple[list[Widget], list[Parameter]]:
     try:
         data = json.loads(text)
     except (TypeError, ValueError):
-        raise ClipboardError("у буфері немає скопійованого елемента") from None
+        raise ClipboardError(tr("у буфері немає скопійованого елемента")) from None
     if not isinstance(data, dict) or data.get("format") != FORMAT:
-        raise ClipboardError("у буфері немає скопійованого елемента")
+        raise ClipboardError(tr("у буфері немає скопійованого елемента"))
     try:
         raw = data["widgets"] if "widgets" in data else [data["widget"]]
         widgets = [Widget.model_validate(w) for w in raw]
         params = [_PARAMETER.validate_python(p) for p in data.get("parameters", [])]
     except (KeyError, TypeError, ValidationError):
-        raise ClipboardError("скопійований елемент пошкоджено") from None
+        raise ClipboardError(tr("скопійований елемент пошкоджено")) from None
     if not widgets:
-        raise ClipboardError("у буфері немає скопійованого елемента")
+        raise ClipboardError(tr("у буфері немає скопійованого елемента"))
     return widgets, params
 
 
@@ -147,12 +148,14 @@ def paste(page: Page, text: str) -> Pasted:
         existing = page.parameter(param.name)
         if existing is None:
             page.parameters.append(param)
-            notes.append(f"додано параметр «{param.name}»")
+            notes.append(tr("додано параметр «{name}»").format(name=param.name))
         elif existing.type != param.type:
             dropped.add(param.name)
             notes.append(
-                f"«{param.name}» на цій сторінці — {existing.type}, а не {param.type}: "
-                "прив'язку й умови з ним прибрано"
+                tr(
+                    "«{name}» на цій сторінці — {type}, а не {type2}: прив'язку й умови "
+                    "з ним прибрано"
+                ).format(name=param.name, type=existing.type, type2=param.type)
             )
     if dropped:
         widgets = [_without(w, dropped) for w in widgets]

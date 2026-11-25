@@ -34,16 +34,21 @@ from espui.core.models import (
     SeriesParameter,
     StrParameter,
 )
+from espui.i18n import tr
 
 TYPE_TITLES = {
-    "float": "float — дробове число",
-    "int": "int — ціле число",
-    "bool": "bool — так / ні",
-    "str": "str — рядок",
-    "enum": "enum — варіанти",
-    "series": "series — список {x: y}",
+    "float": tr("float — дробове число"),
+    "int": tr("int — ціле число"),
+    "bool": tr("bool — так / ні"),
+    "str": tr("str — рядок"),
+    "enum": tr("enum — варіанти"),
+    "series": tr("series — список {x: y}"),
 }
-CHARSET_TITLES = {"latin_uk": "латиниця + українська", "latin": "латиниця", "digits": "цифри"}
+CHARSET_TITLES = {
+    "latin_uk": tr("латиниця + українська"),
+    "latin": tr("латиниця"),
+    "digits": tr("цифри"),
+}
 
 
 def _spin(lo: float, hi: float, decimals: int = 2) -> QDoubleSpinBox:
@@ -64,7 +69,7 @@ class ParameterDialog(QDialog):
     ) -> None:
         super().__init__(parent)
         self.editing = param is not None
-        self.setWindowTitle("Редагувати параметр" if self.editing else "Новий параметр")
+        self.setWindowTitle(tr("Редагувати параметр") if self.editing else tr("Новий параметр"))
         self.name_problem = name_problem or (lambda _p: None)
         self.errors: dict[str, QLabel] = {}
 
@@ -73,8 +78,8 @@ class ParameterDialog(QDialog):
         for kind in PARAMETER_TYPES:
             self.type.addItem(TYPE_TITLES[kind], kind)
         self.form = QFormLayout()
-        self._row("Назва", self.name, "name")
-        self._row("Тип", self.type, "type")
+        self._row(tr("Назва"), self.name, "name")
+        self._row(tr("Тип"), self.type, "type")
 
         self.pages = QStackedWidget()
         self.fields: dict[str, dict[str, QWidget]] = {}
@@ -84,7 +89,7 @@ class ParameterDialog(QDialog):
         buttons = QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel
         self.buttons = QDialogButtonBox(buttons)
         self.buttons.button(QDialogButtonBox.StandardButton.Ok).setText(
-            "Зберегти зміни" if self.editing else "Додати"
+            tr("Зберегти зміни") if self.editing else tr("Додати")
         )
         self.buttons.accepted.connect(self.accept)
         self.buttons.rejected.connect(self.reject)
@@ -125,8 +130,10 @@ class ParameterDialog(QDialog):
             decimals = 0 if kind == "int" else 2
             f["min"] = _spin(-1e9, 1e9, decimals)
             f["max"] = _spin(-1e9, 1e9, decimals)
-            self._row("Мін" if kind != "series" else "Y мін", f["min"], f"{kind}.min", form)
-            self._row("Макс" if kind != "series" else "Y макс", f["max"], f"{kind}.max", form)
+            self._row(tr("Мін") if kind != "series" else tr("Y мін"), f["min"], f"{kind}.min", form)
+            self._row(
+                tr("Макс") if kind != "series" else tr("Y макс"), f["max"], f"{kind}.max", form
+            )
         if kind in ("float", "int"):
             f["default"] = _spin(-1e9, 1e9, 0 if kind == "int" else 2)
         elif kind == "bool":
@@ -134,33 +141,33 @@ class ParameterDialog(QDialog):
         elif kind == "str":
             f["max_len"] = QSpinBox()
             f["max_len"].setRange(2, 128)  # type: ignore[attr-defined]
-            self._row("Макс. довжина", f["max_len"], "str.max_len", form)
+            self._row(tr("Макс. довжина"), f["max_len"], "str.max_len", form)
             f["default"] = QLineEdit()
             f["charset"] = QComboBox()
             for key, title in CHARSET_TITLES.items():
                 f["charset"].addItem(title, key)  # type: ignore[attr-defined]
             f["extra_chars"] = QLineEdit()
-            f["extra_chars"].setPlaceholderText("додаткові символи, напр. №°")  # type: ignore[attr-defined]
+            f["extra_chars"].setPlaceholderText(tr("додаткові символи, напр. №°"))  # type: ignore[attr-defined]
         elif kind == "enum":
             f["values"] = QPlainTextEdit()
-            f["values"].setPlaceholderText("по одному варіанту в рядку")  # type: ignore[attr-defined]
+            f["values"].setPlaceholderText(tr("по одному варіанту в рядку"))  # type: ignore[attr-defined]
             f["values"].setMaximumHeight(90)
-            self._row("Варіанти", f["values"], "enum.values", form)
+            self._row(tr("Варіанти"), f["values"], "enum.values", form)
             f["default"] = QComboBox()
         elif kind == "series":
             f["max_points"] = QSpinBox()
             f["max_points"].setRange(2, 256)  # type: ignore[attr-defined]
-            self._row("Макс. точок", f["max_points"], "series.max_points", form)
+            self._row(tr("Макс. точок"), f["max_points"], "series.max_points", form)
             f["x_kind"] = QComboBox()
-            f["x_kind"].addItem("число", "number")  # type: ignore[attr-defined]
-            f["x_kind"].addItem("мітка до 7 символів", "label")  # type: ignore[attr-defined]
-            self._row("Ключ X", f["x_kind"], "series.x_kind", form)
+            f["x_kind"].addItem(tr("число"), "number")  # type: ignore[attr-defined]
+            f["x_kind"].addItem(tr("мітка до 7 символів"), "label")  # type: ignore[attr-defined]
+            self._row(tr("Ключ X"), f["x_kind"], "series.x_kind", form)
             f["default"] = QLineEdit()
             f["default"].setPlaceholderText("x:y; x:y")  # type: ignore[attr-defined]
-        self._row("За замовчуванням", f["default"], f"{kind}.default", form)
+        self._row(tr("За замовчуванням"), f["default"], f"{kind}.default", form)
         if kind == "str":
-            self._row("Символи на платі", f["charset"], "str.charset", form)
-            self._row("Ще символи", f["extra_chars"], "str.extra_chars", form)
+            self._row(tr("Символи на платі"), f["charset"], "str.charset", form)
+            self._row(tr("Ще символи"), f["extra_chars"], "str.extra_chars", form)
         for widget in f.values():
             for signal in ("valueChanged", "textChanged", "toggled", "currentIndexChanged"):
                 if hasattr(widget, signal):
@@ -191,7 +198,7 @@ class ParameterDialog(QDialog):
         if self.kind == "series" and f["max_points"].value() == 2:  # type: ignore[attr-defined]
             f["max_points"].setValue(24)  # type: ignore[attr-defined]
         if self.kind == "enum" and not f["values"].toPlainText():  # type: ignore[attr-defined]
-            f["values"].setPlainText("OK\nУвага\nПомилка")  # type: ignore[attr-defined]
+            f["values"].setPlainText(tr("OK\nУвага\nПомилка"))  # type: ignore[attr-defined]
         self.validate()
 
     def _enum_values_changed(self) -> None:

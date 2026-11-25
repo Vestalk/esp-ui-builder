@@ -47,13 +47,14 @@ from espui.core.models import (
 )
 from espui.core.params import compare_value_for, default_compare_value
 from espui.gui.widgets_catalog import condition_default_to, mapping_defaults
+from espui.i18n import tr
 
 PROP_TITLES = {
-    "color": "колір",
-    "text": "текст / формат",
-    "visible": "видимість",
-    "opacity": "непрозорість, %",
-    "angle": "кут, °",
+    "color": tr("колір"),
+    "text": tr("текст / формат"),
+    "visible": tr("видимість"),
+    "opacity": tr("непрозорість, %"),
+    "angle": tr("кут, °"),
     "x": "x",
     "y": "y",
 }
@@ -64,8 +65,8 @@ OP_TITLES = {
     "<": "<",
     ">=": "≥",
     "<=": "≤",
-    "in": "у діапазоні",
-    "not in": "поза діапазоном",
+    "in": tr("у діапазоні"),
+    "not in": tr("поза діапазоном"),
 }
 
 
@@ -96,7 +97,7 @@ class RuleRow(QFrame):
         lines.addLayout(self.row2)
         self.remove_button = QToolButton(self)
         self.remove_button.setText("×")
-        self.remove_button.setToolTip("Видалити запис")
+        self.remove_button.setToolTip(tr("Видалити запис"))
 
 
 class RulesEditor(QWidget):
@@ -119,9 +120,9 @@ class RulesEditor(QWidget):
         self.rows_box = QVBoxLayout()
         layout.addLayout(self.rows_box)
         buttons = QHBoxLayout()
-        self.add_condition = QPushButton("+ Умова")
+        self.add_condition = QPushButton(tr("+ Умова"))
         self.add_condition.clicked.connect(self._add_condition)
-        self.add_mapping = QPushButton("+ Залежність")
+        self.add_mapping = QPushButton(tr("+ Залежність"))
         self.add_mapping.clicked.connect(self._add_mapping)
         buttons.addWidget(self.add_condition)
         buttons.addWidget(self.add_mapping)
@@ -132,7 +133,10 @@ class RulesEditor(QWidget):
         self.errors.setStyleSheet("color: #c0392b")
         layout.addWidget(self.errors)
         self.hint = QLabel(
-            "Усе, що залежить від параметрів, задається тут; у властивостях — лише базові значення."
+            tr(
+                "Усе, що залежить від параметрів, задається тут; у властивостях — "
+                "лише базові значення."
+            )
         )
         self.hint.setWordWrap(True)
         self.hint.setEnabled(False)
@@ -170,7 +174,7 @@ class RulesEditor(QWidget):
             active = isinstance(rule, Condition) and condition_matches(rule, values)
             if bool(row.property("active")) != active:
                 row.setProperty("active", active)  # red border (theme), as in the mock-up
-                row.setToolTip("Ця умова зараз спрацьовує" if active else "")
+                row.setToolTip(tr("Ця умова зараз спрацьовує") if active else "")
                 row.style().unpolish(row)
                 row.style().polish(row)
         issues = [i for i in check_widget(widget, page, ()) if i.path.startswith("rules")]
@@ -222,7 +226,7 @@ class RulesEditor(QWidget):
         frame, layout = self._frame(index)
         params = self._condition_params()
         param = self.page.parameter(rule.param)
-        layout.addWidget(QLabel("якщо"))
+        layout.addWidget(QLabel(tr("якщо")))
         p_combo = QComboBox()
         for p in params:
             p_combo.addItem(p.name, p.name)
@@ -261,7 +265,7 @@ class RulesEditor(QWidget):
     def _mapping_row(self, index: int, rule: MappingRule) -> RuleRow:
         assert self.widget is not None
         frame, layout = self._frame(index)
-        layout.addWidget(QLabel("від"))
+        layout.addWidget(QLabel(tr("від")))
         p_combo = QComboBox()
         for p in self._numeric_params():
             p_combo.addItem(p.name, p.name)
@@ -277,7 +281,7 @@ class RulesEditor(QWidget):
         layout.addWidget(prop_combo)
         layout.addStretch(1)
         layout = frame.row2
-        for field, title in (("at_min", "при мін"), ("at_max", "при макс")):
+        for field, title in (("at_min", tr("при мін")), ("at_max", tr("при макс"))):
             layout.addWidget(QLabel(title))
             spin = _number(-10000, 10000, getattr(rule, field))
             spin.setObjectName(field)
@@ -317,7 +321,7 @@ class RulesEditor(QWidget):
         row = QHBoxLayout(box)
         row.setContentsMargins(0, 0, 0, 0)
         decimals = 0 if isinstance(param, IntParameter) else 2
-        for pos, title in enumerate(("від", "до")):
+        for pos, title in enumerate((tr("від"), tr("до"))):
             row.addWidget(QLabel(title))
             spin = _number(-1e6, 1e6, float(value[pos]), decimals)
             spin.setObjectName("range_from" if pos == 0 else "range_to")
@@ -339,7 +343,7 @@ class RulesEditor(QWidget):
             line.editingFinished.connect(lambda: commit(line.text().strip()))
 
             def pick() -> None:
-                color = QColorDialog.getColor(QColor(str(value)), self, "Колір")
+                color = QColorDialog.getColor(QColor(str(value)), self, tr("Колір"))
                 if color.isValid():
                     commit(color.name())
 
@@ -353,8 +357,8 @@ class RulesEditor(QWidget):
             return line
         if prop == "visible":
             combo = QComboBox()
-            combo.addItem("показати", True)
-            combo.addItem("сховати", False)
+            combo.addItem(tr("показати"), True)
+            combo.addItem(tr("сховати"), False)
             combo.setCurrentIndex(0 if value else 1)
             combo.activated.connect(lambda _i: commit(combo.currentData()))
             return combo
@@ -454,6 +458,6 @@ class RulesEditor(QWidget):
 def _rule_label(path: str) -> str:
     """``rules[1].to`` -> ``запис 2``."""
     try:
-        return f"запис {int(path.split('[')[1].split(']')[0]) + 1}"
+        return tr("запис {v1}").format(v1=int(path.split("[")[1].split("]")[0]) + 1)
     except (IndexError, ValueError):
-        return "умови"
+        return tr("умови")

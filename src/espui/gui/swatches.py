@@ -14,6 +14,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QColorDialog, QGridLayout, QToolButton, QWidget
 
 from espui.gui.document import Document
+from espui.i18n import tr
 
 COLUMNS = 10
 PAGE_COLORS = 8
@@ -53,7 +54,7 @@ class ColorSwatches(QWidget):
         self.add_button.setObjectName("swatch_add")
         self.add_button.setText("＋")
         self.add_button.setFixedSize(SIZE + 4, SIZE)
-        self.add_button.setToolTip("Додати поточний колір у кольори проєкту")
+        self.add_button.setToolTip(tr("Додати поточний колір у кольори проєкту"))
         self.add_button.clicked.connect(self._add_current)
         self._signature: tuple[object, ...] = ()
         self.refresh()
@@ -87,13 +88,17 @@ class ColorSwatches(QWidget):
         button.setFixedSize(SIZE, SIZE)
         button.setStyleSheet(swatch_style(color, dashed=not in_palette))
         if in_palette:
-            button.setToolTip(f"{color} — колір проєкту (правий клік — прибрати)")
+            button.setToolTip(
+                tr("{color} — колір проєкту (правий клік — прибрати)").format(color=color)
+            )
             button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             button.customContextMenuRequested.connect(
                 lambda _pos, c=color: self.doc.remove_color(c)
             )
         else:
-            button.setToolTip(f"{color} — є на сторінці (правий клік — у кольори проєкту)")
+            button.setToolTip(
+                tr("{color} — є на сторінці (правий клік — у кольори проєкту)").format(color=color)
+            )
             button.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
             button.customContextMenuRequested.connect(lambda _pos, c=color: self.doc.add_color(c))
         button.clicked.connect(lambda _=False, c=color: self.on_pick(c))

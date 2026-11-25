@@ -24,6 +24,7 @@ from urllib.parse import unquote_to_bytes
 
 from espui.core.issues import ProjectFormatError
 from espui.core.models import SCHEMA_VERSION
+from espui.i18n import tr
 
 Data = dict[str, Any]
 
@@ -61,17 +62,21 @@ def is_mockup(data: Data) -> bool:
 def migrate(source: Any) -> Data:
     """Return a migrated deep copy of ``source`` in the current schema layout."""
     if not isinstance(source, dict):
-        raise ProjectFormatError("Файл не схожий на проєкт ESP UI Builder: очікується об'єкт JSON")
+        raise ProjectFormatError(
+            tr("Файл не схожий на проєкт ESP UI Builder: очікується об'єкт JSON")
+        )
     data: Data = copy.deepcopy(source)
     if is_mockup(data):
         data = from_mockup(data)
     version = data.get("schema", SCHEMA_VERSION)
     if not isinstance(version, int) or isinstance(version, bool) or version < 1:
-        raise ProjectFormatError(f"Невідома версія формату: {version!r}")
+        raise ProjectFormatError(tr("Невідома версія формату: {version!r}").format(version=version))
     if version > SCHEMA_VERSION:
         raise ProjectFormatError(
-            f"Файл створено новішою версією програми (формат {version}, "
-            f"підтримується до {SCHEMA_VERSION}). Оновіть ESP UI Builder."
+            tr(
+                "Файл створено новішою версією програми (формат {version}, "
+                "підтримується до {SCHEMA_VERSION}). Оновіть ESP UI Builder."
+            ).format(version=version, SCHEMA_VERSION=SCHEMA_VERSION)
         )
     for step in range(version, SCHEMA_VERSION):
         data = _STEPS[step](data)
@@ -369,7 +374,7 @@ def parse_data_url(url: str) -> tuple[str, str]:
     """``data:`` URL -> (mime, base64 payload). Percent-encoded payloads are re-encoded."""
     match = _DATA_URL_RE.match(url)
     if match is None:
-        raise ProjectFormatError("картинка має бути data: URL")
+        raise ProjectFormatError(tr("картинка має бути data: URL"))
     mime = match["mime"] or "application/octet-stream"
     payload = match["payload"]
     if match["b64"]:

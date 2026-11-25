@@ -42,7 +42,7 @@ class UI(_d.Page):
     USES_ALPHA = True  # a second region buffer for translucent widgets
 {% endif %}
 {% if taps %}
-    # Widget -> procedure name ("При натиску"); the procedures: ui.draw(p, actions={...}).
+    # Widget -> procedure name ("On tap" / "При натиску"); the procedures: ui.draw(p, actions={...}).
     TAPS = {
 {% for w in taps %}
         {{ w.id | py }}: {{ w.tap | py }},

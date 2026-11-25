@@ -23,6 +23,7 @@ from espui.core.models import (
     SeriesParameter,
     StrParameter,
 )
+from espui.i18n import tr
 
 
 def is_numeric(param: Parameter) -> bool:
@@ -104,7 +105,9 @@ def update_parameter(page: Page, old_name: str, new: Parameter) -> tuple[Page, l
         page.test_values[new.name] = fitted
         if fitted != value and not retyped:
             notes.append(
-                f"Тестове значення «{new.name}» змінено на {fitted!r}: воно поза новими межами."
+                tr(
+                    "Тестове значення «{name}» змінено на {fitted!r}: воно поза новими межами."
+                ).format(name=new.name, fitted=fitted)
             )
 
     unbound = dropped = reset = replaced = 0
@@ -135,13 +138,25 @@ def update_parameter(page: Page, old_name: str, new: Parameter) -> tuple[Page, l
         widget.rules = rules
 
     if unbound:
-        notes.append(f"Прив'язок знято: {unbound} (елементи не можуть показати {new.type}).")
+        notes.append(
+            tr("Прив'язок знято: {unbound} (елементи не можуть показати {type}).").format(
+                unbound=unbound, type=new.type
+            )
+        )
     if dropped:
-        notes.append(f"Залежностей видалено: {dropped} (потрібен числовий параметр).")
+        notes.append(
+            tr("Залежностей видалено: {dropped} (потрібен числовий параметр).").format(
+                dropped=dropped
+            )
+        )
     if reset:
-        notes.append(f"Умов скинуто до значень за замовчуванням: {reset}.")
+        notes.append(tr("Умов скинуто до значень за замовчуванням: {reset}.").format(reset=reset))
     if replaced:
-        notes.append(f"Умов зі зміненим значенням: {replaced} (такого варіанта більше немає).")
+        notes.append(
+            tr("Умов зі зміненим значенням: {replaced} (такого варіанта більше немає).").format(
+                replaced=replaced
+            )
+        )
     return page, notes
 
 
@@ -175,7 +190,9 @@ def parameter_summary(param: Parameter) -> str:
     if isinstance(param, EnumParameter):
         return "enum · " + ", ".join(param.values)
     if isinstance(param, StrParameter):
-        return f"str · < {param.max_len} символів"
+        return tr("str · < {max_len} символів").format(max_len=param.max_len)
     if isinstance(param, SeriesParameter):
-        return f"series · ≤ {param.max_points} точок · y {param.min:g}…{param.max:g}"
+        return tr("series · ≤ {max_points} точок · y {min:g}…{max:g}").format(
+            max_points=param.max_points, min=param.min, max=param.max
+        )
     return "bool"

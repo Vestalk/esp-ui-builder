@@ -55,6 +55,7 @@ from espui.gui.document import Document
 from espui.gui.parameters import PARAM_MIME
 from espui.gui.theme import SCREEN_OUTLINE
 from espui.gui.widgets_catalog import MIN_SIZE, new_widget, shift_widget
+from espui.i18n import tr
 from espui.preview.raster import Canvas, render_page
 
 ZOOM_MIN = 0.5
@@ -528,8 +529,10 @@ class Workspace(QGraphicsView):
         self.preview_changed.emit(on)
         if on:
             self.message.emit(
-                "Перегляд: клацайте по сторінці як пальцем — видно, яка процедура "
-                "спрацює (Esc — назад до редагування)"
+                tr(
+                    "Перегляд: клацайте по сторінці як пальцем — видно, яка процедура "
+                    "спрацює (Esc — назад до редагування)"
+                )
             )
 
     def _apply_taps(self) -> None:
@@ -545,14 +548,22 @@ class Workspace(QGraphicsView):
         px, py = int(x), int(y)
         widget = tap_at(doc.page, px, py)
         self.last_tap = (px, py, widget.id if widget else None)
-        no_touch = "" if doc.project.display.touch else " — увага: дисплей без сенсора"
+        no_touch = "" if doc.project.display.touch else tr(" — увага: дисплей без сенсора")
         if widget is not None:
             bx, by, bw, bh = tap_box(widget, ParameterValues.for_page(doc.page))
             item.flash = (QRectF(bx, by, max(bw, 1), max(bh, 1)), True)
-            self.message.emit(f"Натиск ({px}, {py}) → «{widget.id}»: {widget.on_tap}(){no_touch}")
+            self.message.emit(
+                tr("Натиск ({px}, {py}) → «{id}»: {on_tap}(){no_touch}").format(
+                    px=px, py=py, id=widget.id, on_tap=widget.on_tap, no_touch=no_touch
+                )
+            )
         else:
             item.flash = (QRectF(px - 3, py - 3, 7, 7), False)
-            self.message.emit(f"Натиск ({px}, {py}): тут немає елемента з «При натиску»{no_touch}")
+            self.message.emit(
+                tr("Натиск ({px}, {py}): тут немає елемента з «При натиску»{no_touch}").format(
+                    px=px, py=py, no_touch=no_touch
+                )
+            )
         item.update()
         self._flash_timer.start()
         return widget
@@ -684,7 +695,7 @@ class Workspace(QGraphicsView):
         if xs is None and ys is None:
             return []
         frames = []
-        for end, label in (("at_min", "мін"), ("at_max", "макс")):
+        for end, label in (("at_min", tr("мін")), ("at_max", tr("макс"))):
             x = getattr(xs, end) if xs else widget.x
             y = getattr(ys, end) if ys else widget.y
             frames.append((QRectF(x, y, max(widget.w, 2), max(widget.h, 2)), label))
@@ -703,7 +714,9 @@ class Workspace(QGraphicsView):
         window = self.window()
         bar = getattr(window, "statusBar", None)
         if callable(bar):
-            bar().showMessage("Елемент заблоковано (🔒 у «Шарах»): розблокуйте, щоб рухати", 4000)
+            bar().showMessage(
+                tr("Елемент заблоковано (🔒 у «Шарах»): розблокуйте, щоб рухати"), 4000
+            )
 
     def widget_at(self, page_point: QPointF) -> Widget | None:
         """Top-most widget under a point (page pixels); thin widgets get a wider grab zone."""
@@ -879,12 +892,14 @@ class Workspace(QGraphicsView):
             return
         if gesture.group:
             ids = [gesture.widget.id, *(w.id for w in gesture.group)]
-            self.doc.move_widgets(ids, *gesture.shift, f"Перемістити елементи: {len(ids)}")
+            self.doc.move_widgets(
+                ids, *gesture.shift, tr("Перемістити елементи: {v1}").format(v1=len(ids))
+            )
             self.refresh()
             return
         if gesture.current != gesture.widget:
-            text = {"": "Перемістити", "pivot": "Точка повороту"}.get(
-                gesture.role, "Змінити розмір"
+            text = {"": tr("Перемістити"), "pivot": tr("Точка повороту")}.get(
+                gesture.role, tr("Змінити розмір")
             )
             self.doc.change_widget(gesture.current, text)  # one undo step per gesture
         else:
@@ -954,11 +969,13 @@ class Workspace(QGraphicsView):
                     self.locked_message()
                     return
                 if len(ids) > 1:
-                    doc.move_widgets(ids, dx * step, dy * step, "Зсунути елементи", merge="nudge")
+                    doc.move_widgets(
+                        ids, dx * step, dy * step, tr("Зсунути елементи"), merge="nudge"
+                    )
                     return
                 widget = doc.page.widget(ids[0]) or widget
                 moved = shift_widget(widget, dx * step, dy * step)
-                doc.change_widget(moved, "Зсунути", merge="nudge")
+                doc.change_widget(moved, tr("Зсунути"), merge="nudge")
                 return
             if key == Qt.Key.Key_Escape:
                 doc.select(None)
@@ -1011,7 +1028,9 @@ class Workspace(QGraphicsView):
         else:
             created = self.doc.add_parameter_widget(name, snap(point.x()), snap(point.y()))
             if created is not None:
-                self.message.emit(f"Новий елемент «{created.id}» показує «{name}».")
+                self.message.emit(
+                    tr("Новий елемент «{id}» показує «{name}».").format(id=created.id, name=name)
+                )
 
     def add_widget(self, kind: WidgetType, point: QPointF | None = None) -> None:
         """Add a widget to the current page: at ``point`` (page pixels) or in the centre."""
@@ -1037,7 +1056,7 @@ class Workspace(QGraphicsView):
             started = self._anim_start.setdefault((page.name, widget.id), now)
             index = int((now - started) * 1000 / (asset.delay_ms or 100))
             count = len(asset.frames)
-            loop = widget.image is None or widget.image.play == "loop"
+            loop = widget.image is not None and widget.image.play == "loop"
             frames[widget.id] = index % count if loop else min(index, count - 1)
         return frames
 

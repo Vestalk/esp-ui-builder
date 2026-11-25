@@ -15,6 +15,7 @@ from dataclasses import dataclass
 from espui.core.evaluate import ParameterValues, effective
 from espui.core.issues import Issue, format_path
 from espui.core.models import Page, Project, Widget
+from espui.i18n import tr
 
 MIN_TAP_PX = 36
 """Smaller than this (either side) is hard to hit with a finger (~6 mm on a 2.8" panel)."""
@@ -95,21 +96,26 @@ def tap_advice(project: Project, pages: list[Page] | None = None) -> Iterator[Is
             if no_touch:
                 yield Issue(
                     path,
-                    f"«{wid}»: дисплей без сенсора — натиски не працюватимуть "
-                    "(Дисплей → Сенсорний екран)",
+                    tr(
+                        "«{wid}»: дисплей без сенсора — натиски не працюватимуть (Дисплей → "
+                        "Сенсорний екран)"
+                    ).format(wid=wid),
                 )
             if zone.small:
                 yield Issue(
                     path,
-                    f"«{wid}»: зона натиску {zone.box[2]}×{zone.box[3]} px — пальцем важко "
-                    f"влучити, краще від {MIN_TAP_PX} px",
+                    tr(
+                        "«{wid}»: зона натиску {v1}×{v} px — пальцем важко влучити, краще "
+                        "від {MIN_TAP_PX} px"
+                    ).format(wid=wid, v1=zone.box[2], v=zone.box[3], MIN_TAP_PX=MIN_TAP_PX),
                 )
             above = next((z for z in zones[i + 1 :] if _covers(z.box, zone.box)), None)
             if above is not None:
                 yield Issue(
                     path,
-                    f"«{wid}» повністю під «{above.widget.id}»: усі натиски дістануться "
-                    f"«{above.widget.id}»",
+                    tr("«{wid}» повністю під «{id}»: усі натиски дістануться «{id}»").format(
+                        wid=wid, id=above.widget.id
+                    ),
                 )
 
 

@@ -18,6 +18,7 @@ from dataclasses import dataclass
 from espui.core.models import Project
 from espui.generators.micropython.fonts import FONTS_FILE
 from espui.generators.micropython.generator import IMG_DIR, generate
+from espui.i18n import tr
 
 _GLYPH_BYTES_RE = re.compile(r"glyphs, (\d+) bytes")
 
@@ -35,18 +36,20 @@ class MemoryEstimate:
 
     def summary(self) -> str:
         """``Флеш ≈ 312 КБ (код 50 · шрифти 18 · картинки 244) · RAM ≈ 40 КБ``."""
-        return (
-            f"Флеш ≈ {_kb(self.flash)} (код {_kb(self.code, unit=False)} · "
-            f"шрифти {_kb(self.fonts, unit=False)} · картинки {_kb(self.images, unit=False)})"
-            f" · RAM ≈ {_kb(self.ram)}"
+        return tr("Флеш ≈ {v1} (код {v} · шрифти {v2} · картинки {v3}) · RAM ≈ {v4}").format(
+            v1=_kb(self.flash),
+            v=_kb(self.code, unit=False),
+            v2=_kb(self.fonts, unit=False),
+            v3=_kb(self.images, unit=False),
+            v4=_kb(self.ram),
         )
 
 
 def _kb(size: int, unit: bool = True) -> str:
     if size == 0:
-        return "0 КБ" if unit else "0"
+        return tr("0 КБ") if unit else "0"
     text = f"{size / 1024:.0f}" if size >= 10 * 1024 else f"{size / 1024:.1f}".replace(".", ",")
-    return f"{text} КБ" if unit else text
+    return tr("{text} КБ").format(text=text) if unit else text
 
 
 def estimate(project: Project) -> MemoryEstimate:

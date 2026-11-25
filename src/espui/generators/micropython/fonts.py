@@ -31,6 +31,7 @@ from espui.core.models import (
     StrParameter,
     Widget,
 )
+from espui.i18n import tr
 
 FONTS_FILE = "ui_fonts.py"
 CHART_FONT_SIZE = 8
@@ -41,14 +42,14 @@ NUMBER_CHARS = DIGITS + ".,-+%°: " + "einfa"
 """How numbers are printed (``%.1f``, ``%d``, ``%s``), incl. ``1e+20``, ``inf``, ``nan``."""
 BOOL_CHARS = "TrueFals"
 LATIN = "".join(chr(c) for c in range(32, 127))
-UKRAINIAN = "АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯабвгґдеєжзиіїйклмнопрстуфхцчшщьюяʼ’«»—–…№°"
+UKRAINIAN = "АБВГҐДЕЄЖЗИІЇЙКЛМНОПРСТУФХЦЧШЩЬЮЯабвгґдеєжзиіїйклмнопрстуфхцчшщьюяʼ’«»—–…№°"  # glyphs
 CHARSETS: Mapping[str, str] = {
     "latin_uk": LATIN + UKRAINIAN,
     "latin": LATIN,
     "digits": DIGITS + " .,-+:",
 }
 ALWAYS = " " + REPLACEMENT + ELLIPSIS
-NO_DATA = "немає даних"
+NO_DATA = tr("немає даних")
 
 _SPEC_RE = re.compile(r"%(?:\.\d+)?[fds]")
 
@@ -167,7 +168,9 @@ class FontsModule:
             if key in sizes
         )
         kb = f"{self.size / 1024:.1f}".replace(".", ",")
-        return f"Шрифти: {families} — {FONTS_FILE} {kb} КБ"
+        return tr("Шрифти: {families} — {FONTS_FILE} {kb} КБ").format(
+            families=families, FONTS_FILE=FONTS_FILE, kb=kb
+        )
 
 
 def build(needed: Mapping[FontKey, CharNeeds]) -> FontsModule:
@@ -178,8 +181,9 @@ def build(needed: Mapping[FontKey, CharNeeds]) -> FontsModule:
         missing = sorted(c for c in chars.static if c not in font.glyphs and not c.isspace())
         if missing:
             warnings.append(
-                f"Шрифт {FONTS[key[0]].title} не має символів {''.join(missing)!r}: "
-                f"на екрані буде «{REPLACEMENT}»."
+                tr("Шрифт {title} не має символів {v1!r}: на екрані буде «{REPLACEMENT}».").format(
+                    title=FONTS[key[0]].title, v1="".join(missing), REPLACEMENT=REPLACEMENT
+                )
             )
         fonts[key] = font
     return FontsModule(render_module(fonts), fonts, tuple(warnings))

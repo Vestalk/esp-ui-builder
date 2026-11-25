@@ -38,6 +38,7 @@ from espui.core.models import (
     SeriesPoint,
     Widget,
 )
+from espui.i18n import tr
 
 
 @dataclass
@@ -422,7 +423,12 @@ def _chart(
     ]
     bf = bitmap_font(
         widget,
-        "".join(labels) + _tick(lo) + _tick(hi) + settings.axis_x + settings.axis_y + "немає даних",
+        "".join(labels)
+        + _tick(lo)
+        + _tick(hi)
+        + settings.axis_x
+        + settings.axis_y
+        + tr("немає даних"),
         8,
     )
     lw = max(bf.width(_tick(lo)), bf.width(_tick(hi))) + 4
@@ -457,7 +463,7 @@ def _chart(
         _text(c, bf, ax, right - bf.width(ax), y + h - 2, label)
     n = len(pts)
     if not n:
-        nd = "немає даних"
+        nd = tr("немає даних")
         _text(c, bf, nd, (left + right) // 2 - bf.width(nd) // 2, (top + bottom) // 2, label)
         return
     bars = settings.style == "bars"

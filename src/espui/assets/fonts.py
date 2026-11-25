@@ -19,6 +19,8 @@ from types import MappingProxyType
 
 import freetype
 
+from espui.i18n import tr
+
 FONTS_DIR = "fonts"
 """Folder with the TTF files and licences, next to this module."""
 ELLIPSIS = "…"
@@ -41,21 +43,26 @@ class FontInfo:
 FONTS: Mapping[str, FontInfo] = MappingProxyType(
     {
         "serif": FontInfo(
-            "serif", "Literata", "Literata[opsz,wght].ttf", "Literata-OFL.txt", "з засічками", True
+            "serif",
+            "Literata",
+            "Literata[opsz,wght].ttf",
+            "Literata-OFL.txt",
+            tr("з засічками"),
+            True,
         ),
         "mono": FontInfo(
             "mono",
             "JetBrains Mono",
             "JetBrainsMono[wght].ttf",
             "JetBrainsMono-OFL.txt",
-            "моноширинний",
+            tr("моноширинний"),
         ),
         "pixel": FontInfo(
             "pixel",
             "Press Start 2P",
             "PressStart2P-Regular.ttf",
             "PressStart2P-OFL.txt",
-            "піксельний",
+            tr("піксельний"),
         ),
     }
 )
@@ -63,7 +70,7 @@ FONTS: Mapping[str, FontInfo] = MappingProxyType(
 
 class UnknownFontError(KeyError):
     def __str__(self) -> str:
-        return f"невідомий шрифт «{self.args[0]}»; є: {', '.join(FONTS)}"
+        return tr("невідомий шрифт «{v1}»; є: {v}").format(v1=self.args[0], v=", ".join(FONTS))
 
 
 @dataclass(frozen=True, slots=True)

@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import ValidationError
 
+from espui.i18n import tr
+
 Loc = tuple[str | int, ...]
 
 # Pydantic inserts union tags / validator names into error locations. Our tags
@@ -32,7 +34,7 @@ class Issue:
     message: str
 
     def __str__(self) -> str:
-        return f"{self.path or '(проєкт)'}: {self.message}"
+        return f"{self.path or tr('(проєкт)')}: {self.message}"
 
 
 class ProjectError(Exception):
@@ -49,42 +51,42 @@ class ProjectValidationError(ProjectError):
         super().__init__(str(self))
 
     def __str__(self) -> str:
-        head = f"Проєкт містить помилки ({len(self.issues)}):"
+        head = tr("Проєкт містить помилки ({v1}):").format(v1=len(self.issues))
         return "\n".join([head, *(f"  • {issue}" for issue in self.issues)])
 
 
 # ------------------------------------------------------------------ pydantic -> Ukrainian
 _MESSAGES: dict[str, str] = {
-    "missing": "обов'язкове поле",
-    "extra_forbidden": "невідоме поле",
-    "int_type": "очікується ціле число",
-    "int_parsing": "очікується ціле число",
-    "int_from_float": "очікується ціле число",
-    "float_type": "очікується число",
-    "float_parsing": "очікується число",
-    "finite_number": "очікується скінченне число",
-    "bool_type": "очікується true або false",
-    "bool_parsing": "очікується true або false",
-    "string_type": "очікується рядок",
-    "list_type": "очікується список",
-    "tuple_type": "очікується список",
-    "dict_type": "очікується об'єкт",
-    "model_type": "очікується об'єкт",
-    "model_attributes_type": "очікується об'єкт",
-    "literal_error": "допустимі значення: {expected}",
-    "enum": "допустимі значення: {expected}",
-    "greater_than": "має бути більше за {gt}",
-    "greater_than_equal": "має бути не менше {ge}",
-    "less_than": "має бути менше за {lt}",
-    "less_than_equal": "має бути не більше {le}",
-    "too_short": "щонайменше {min_length} елемент(и)",
-    "too_long": "щонайбільше {max_length} елемент(ів)",
-    "string_too_short": "щонайменше {min_length} символ(и)",
-    "string_too_long": "щонайбільше {max_length} символів",
-    "string_pattern_mismatch": "неправильний формат",
-    "union_tag_invalid": "невідомий вид запису: {tag}",
-    "union_tag_not_found": "не вдалося визначити вид запису",
-    "too_many_items": "забагато елементів",
+    "missing": tr("обов'язкове поле"),
+    "extra_forbidden": tr("невідоме поле"),
+    "int_type": tr("очікується ціле число"),
+    "int_parsing": tr("очікується ціле число"),
+    "int_from_float": tr("очікується ціле число"),
+    "float_type": tr("очікується число"),
+    "float_parsing": tr("очікується число"),
+    "finite_number": tr("очікується скінченне число"),
+    "bool_type": tr("очікується true або false"),
+    "bool_parsing": tr("очікується true або false"),
+    "string_type": tr("очікується рядок"),
+    "list_type": tr("очікується список"),
+    "tuple_type": tr("очікується список"),
+    "dict_type": tr("очікується об'єкт"),
+    "model_type": tr("очікується об'єкт"),
+    "model_attributes_type": tr("очікується об'єкт"),
+    "literal_error": tr("допустимі значення: {expected}"),
+    "enum": tr("допустимі значення: {expected}"),
+    "greater_than": tr("має бути більше за {gt}"),
+    "greater_than_equal": tr("має бути не менше {ge}"),
+    "less_than": tr("має бути менше за {lt}"),
+    "less_than_equal": tr("має бути не більше {le}"),
+    "too_short": tr("щонайменше {min_length} елемент(и)"),
+    "too_long": tr("щонайбільше {max_length} елемент(ів)"),
+    "string_too_short": tr("щонайменше {min_length} символ(и)"),
+    "string_too_long": tr("щонайбільше {max_length} символів"),
+    "string_pattern_mismatch": tr("неправильний формат"),
+    "union_tag_invalid": tr("невідомий вид запису: {tag}"),
+    "union_tag_not_found": tr("не вдалося визначити вид запису"),
+    "too_many_items": tr("забагато елементів"),
 }
 
 

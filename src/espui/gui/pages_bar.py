@@ -14,8 +14,9 @@ from PySide6.QtWidgets import (
 )
 
 from espui.gui.document import Document
+from espui.i18n import tr
 
-CONFIRM_TEXT = "Видалити?"
+CONFIRM_TEXT = tr("Видалити?")
 
 
 def tab_text(name: str, widgets: int) -> str:
@@ -66,7 +67,7 @@ class PageTabs(QTabBar):
         self.disarm()
         self.armed = index
         self.setTabText(index, CONFIRM_TEXT)
-        self.setTabToolTip(index, "Натисніть × ще раз, щоб видалити; Esc — скасувати")
+        self.setTabToolTip(index, tr("Натисніть × ще раз, щоб видалити; Esc — скасувати"))
 
     def disarm(self) -> None:
         if self.armed is not None and self.armed < len(self._texts):
@@ -104,11 +105,11 @@ class PagesBar(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
         self.add_button = QToolButton()
         self.add_button.setObjectName("add_page")
-        self.add_button.setText("+ Сторінка")
+        self.add_button.setText(tr("+ Сторінка"))
         self.add_button.setPopupMode(QToolButton.ToolButtonPopupMode.MenuButtonPopup)
         menu = QMenu(self.add_button)
-        menu.addAction("Порожня сторінка", lambda: self.doc.add_page(copy_current=False))
-        menu.addAction("Копія поточної", lambda: self.doc.add_page(copy_current=True))
+        menu.addAction(tr("Порожня сторінка"), lambda: self.doc.add_page(copy_current=False))
+        menu.addAction(tr("Копія поточної"), lambda: self.doc.add_page(copy_current=True))
         self.add_button.setMenu(menu)
         self.add_button.clicked.connect(lambda: self.doc.add_page(copy_current=False))
 
@@ -139,13 +140,19 @@ class PagesBar(QWidget):
         page = self.doc.project.pages[index]
         if name is None:
             name, ok = QInputDialog.getText(
-                self, "Перейменувати сторінку", "Назва (ідентифікатор Python):", text=page.name
+                self,
+                tr("Перейменувати сторінку"),
+                tr("Назва (ідентифікатор Python):"),
+                text=page.name,
             )
             if not ok:
                 return None
             while (problem := self.doc.rename_problem(index, name)) is not None:
                 name, ok = QInputDialog.getText(
-                    self, "Перейменувати сторінку", f"{problem}\nНазва:", text=name
+                    self,
+                    tr("Перейменувати сторінку"),
+                    tr("{problem}\nНазва:").format(problem=problem),
+                    text=name,
                 )
                 if not ok:
                     return None

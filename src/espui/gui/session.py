@@ -19,6 +19,7 @@ from PySide6.QtCore import QObject, QSettings, QStandardPaths, QTimer, Signal
 from espui.core import serializer
 from espui.core.issues import ProjectError
 from espui.gui.document import Document
+from espui.i18n import tr
 
 AUTOSAVE_MS = 1500
 RECOVERY_FILE = "recovery.espui"
@@ -68,21 +69,23 @@ class AutoSaver(QObject):
         self.timer.stop()
         if not self.enabled:
             return False
-        self.status.emit("Зберігаю…")
+        self.status.emit(tr("Зберігаю…"))
         self.before_save()
         try:
             if self.doc.path is not None:
                 self.doc.save()
                 self.discard_recovery()
-                self.status.emit(f"Збережено о {time.strftime('%H:%M')}")
+                self.status.emit(tr("Збережено о {v1}").format(v1=time.strftime("%H:%M")))
             else:
                 self.folder.mkdir(parents=True, exist_ok=True)
                 serializer.save(self.doc.project, self.recovery_path, check=False)
                 self.status.emit(
-                    f"Чернетку збережено о {time.strftime('%H:%M')} (файл ще не вибрано)"
+                    tr("Чернетку збережено о {v1} (файл ще не вибрано)").format(
+                        v1=time.strftime("%H:%M")
+                    )
                 )
         except (OSError, ProjectError) as error:
-            self.status.emit(f"Не вдалося зберегти: {error}")
+            self.status.emit(tr("Не вдалося зберегти: {error}").format(error=error))
             return False
         return True
 
@@ -95,12 +98,12 @@ class AutoSaver(QObject):
         try:
             project = serializer.load(self.recovery_path, check=False)
         except ProjectError as error:
-            self.status.emit(f"Не вдалося відновити: {error}")
+            self.status.emit(tr("Не вдалося відновити: {error}").format(error=error))
             return False
         self.doc.load(project, None)
         self.doc.undo_stack.resetClean()  # unsaved: it still has to get a file
         self.doc.file_changed.emit()
-        self.status.emit("Відновлено незбережений проєкт")
+        self.status.emit(tr("Відновлено незбережений проєкт"))
         return True
 
     def discard_recovery(self) -> None:

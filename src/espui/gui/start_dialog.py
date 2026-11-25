@@ -18,18 +18,19 @@ from PySide6.QtWidgets import (
 )
 
 from espui.gui.session import recent_projects
+from espui.i18n import tr
 
 SHOW_KEY = "start/show"
 EXAMPLES_DIR = Path(__file__).resolve().parents[3] / "examples"
 """In a source checkout: examples/*.espui (a packaged build may have none)."""
 
 EXAMPLE_TITLES = {
-    "weather": "Погода: текст, шкала, дуга, умови",
-    "sensors": "Датчики: кілька значень і стани",
-    "transforms": "Поворот і рух за параметром",
-    "images": "Картинки й анімація",
-    "chart": "Графік (series)",
-    "pages": "Дві сторінки й перемикання",
+    "weather": tr("Погода: текст, шкала, дуга, умови"),
+    "sensors": tr("Датчики: кілька значень і стани"),
+    "transforms": tr("Поворот і рух за параметром"),
+    "images": tr("Картинки й анімація"),
+    "chart": tr("Графік (series)"),
+    "pages": tr("Дві сторінки й перемикання"),
 }
 PATH_ROLE = Qt.ItemDataRole.UserRole
 
@@ -57,17 +58,21 @@ class StartDialog(QDialog):
         self.choice: str | None = None
         self.path: Path | None = None
 
-        title = QLabel("<h2>ESP UI Builder</h2>Екрани для ESP32 і MicroPython: намалюйте сторінку, "
-                       "прив'яжіть до параметрів і згенеруйте код для плати.")  # fmt: skip
+        title = QLabel(
+            tr(
+                "<h2>ESP UI Builder</h2>Екрани для ESP32 і MicroPython: намалюйте сторінку, "
+                "прив'яжіть до параметрів і згенеруйте код для плати."
+            )
+        )
         title.setWordWrap(True)
-        self.new_button = QPushButton("＋ Новий проєкт…")
+        self.new_button = QPushButton(tr("＋ Новий проєкт…"))
         self.new_button.setObjectName("start_new")
-        self.new_button.setToolTip("Порожня сторінка; одразу відкриється вибір дисплея")
+        self.new_button.setToolTip(tr("Порожня сторінка; одразу відкриється вибір дисплея"))
         self.new_button.clicked.connect(lambda: self._done("new"))
-        self.open_button = QPushButton("Відкрити…")
+        self.open_button = QPushButton(tr("Відкрити…"))
         self.open_button.setObjectName("start_open")
         self.open_button.clicked.connect(lambda: self._done("open"))
-        self.help_button = QPushButton("Як почати?")
+        self.help_button = QPushButton(tr("Як почати?"))
         self.help_button.setObjectName("start_help")
         self.help_button.clicked.connect(self._help)
         actions = QVBoxLayout()
@@ -80,25 +85,25 @@ class StartDialog(QDialog):
         for path in recent_projects():
             self._add(self.recent, path.name, path, str(path))
         if not self.recent.count():
-            self.recent.addItem("— ще немає —")
+            self.recent.addItem(tr("— ще немає —"))
             self.recent.item(0).setFlags(Qt.ItemFlag.NoItemFlags)
         self.samples = self._list("start_examples")
         for path in examples():
             self._add(self.samples, EXAMPLE_TITLES.get(path.stem, path.stem), path, path.name)
         lists = QVBoxLayout()
-        lists.addWidget(QLabel("<b>Останні проєкти</b>"))
+        lists.addWidget(QLabel(tr("<b>Останні проєкти</b>")))
         lists.addWidget(self.recent, 2)
-        self.examples_label = QLabel("<b>Приклади</b>")
+        self.examples_label = QLabel(tr("<b>Приклади</b>"))
         lists.addWidget(self.examples_label)
         lists.addWidget(self.samples, 2)
         self.examples_label.setVisible(self.samples.count() > 0)
         self.samples.setVisible(self.samples.count() > 0)
 
-        self.show_again = QCheckBox("Показувати під час запуску")
+        self.show_again = QCheckBox(tr("Показувати під час запуску"))
         self.show_again.setObjectName("start_show")
         self.show_again.setChecked(show_on_start())
         self.show_again.toggled.connect(lambda on: QSettings().setValue(SHOW_KEY, on))
-        close = QPushButton("Закрити")
+        close = QPushButton(tr("Закрити"))
         close.clicked.connect(self.reject)
         bottom = QHBoxLayout()
         bottom.addWidget(self.show_again)

@@ -11,14 +11,14 @@ import {{ pg.module }}
 
 {% if actions %}
 
-# Called when a widget is tapped ("При натиску" in the editor): put your code here.
+# Called when a widget is tapped ("On tap" / "При натиску" in the editor): put your code here.
 {% for name in actions %}
 def {{ name }}():
     print("tap: {{ name }}")
 
 
 {% endfor %}
-# The editor names the procedure of each button ("При натиску"); here are the procedures.
+# The editor names the procedure of each button ("On tap" / "При натиску"); here are the procedures.
 ACTIONS = {
 {% for name in actions %}
     {{ name | py }}: {{ name }},
@@ -48,9 +48,7 @@ ui.draw(p)
 def show(name):
     """Switch to page ``name`` and draw it completely."""
     global current, ui, p
-{% if actions %}
-    ui.stop_touch()
-{% endif %}
+    ui.stop()  # the old page's background work (animations, touch)
     current = name
     ui, p = pages[name]
 {% if actions %}
@@ -62,11 +60,10 @@ def show(name):
 {% endif %}
 
 
-# Demo: the next page every 5 s; in between the current page animates (tick) and updates.
+# Demo: the next page every 5 s. Animations play by themselves (ui.play_<id>() restarts one).
 order = list(pages)
 last = time.ticks_ms()
 while True:
-    ui.tick()
 {% if poll_touch %}
     point = touch.read()
     if point:
@@ -90,14 +87,14 @@ import {{ module }}
 {% if actions %}
 
 
-# Called when a widget is tapped ("При натиску" in the editor): put your code here.
+# Called when a widget is tapped ("On tap" / "При натиску" in the editor): put your code here.
 {% for name in actions %}
 def {{ name }}():
     print("tap: {{ name }}")
 
 
 {% endfor %}
-# The editor names the procedure of each button ("При натиску"); here are the procedures.
+# The editor names the procedure of each button ("On tap" / "При натиску"); here are the procedures.
 ACTIONS = {
 {% for name in actions %}
     {{ name | py }}: {{ name }},
@@ -125,10 +122,14 @@ touch = ui_display.create_touch(display)  # touch.read(): (x, y) or None
 {% endif %}
 
 {% if anims %}
-# Animations run from ui.tick() (non-blocking, ~every 10 ms); parameters change once a second.
+# Animations play by themselves after draw(): "once" ones stop on the last frame, "loop"
+# ones repeat ("Програвати циклічно" / "Play in a loop" in the editor). Play one again:
+{% for w in anims %}
+# ui.play_{{ w.id }}()
+{% endfor %}
+# Frame by frame instead: ui.draw(p, animate=False), then call ui.tick() yourself.
 last = time.ticks_ms()
 while True:
-    ui.tick()
 {% if poll_touch %}
     point = touch.read()
     if point:

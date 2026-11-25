@@ -31,6 +31,7 @@ from espui.core.models import (
     SeriesPoint,
     Widget,
 )
+from espui.i18n import tr
 
 
 # ------------------------------------------------------------------ numbers
@@ -127,7 +128,7 @@ def format_problem(fmt: str) -> str | None:
     """Ukrainian description of an unsupported ``%`` sequence, or None."""
     for match in _ANY_PERCENT_RE.finditer(fmt):
         if not _FORMAT_RE.fullmatch(match.group()):
-            return f"«{match.group()}» не підтримується; можна %s, %d, %.Nf, %%"
+            return tr("«{v1}» не підтримується; можна %s, %d, %.Nf, %%").format(v1=match.group())
     return None
 
 
@@ -156,31 +157,37 @@ def parse_series(text: str, param: SeriesParameter) -> list[SeriesPoint]:
     """``"0:14; 3:13.5"`` -> points; numeric X are sorted ascending."""
     parts = [part.strip() for part in text.split(";") if part.strip()]
     if not parts:
-        raise SeriesParseError("Введіть точки у форматі x:y; x:y")
+        raise SeriesParseError(tr("Введіть точки у форматі x:y; x:y"))
     points: list[SeriesPoint] = []
     for part in parts:
         sep = part.rfind(":")
         if sep < 1:
-            raise SeriesParseError(f"«{part}» — потрібен формат x:y")
+            raise SeriesParseError(tr("«{part}» — потрібен формат x:y").format(part=part))
         x_text, y_text = part[:sep].strip(), part[sep + 1 :].strip()
         y = _parse_number(y_text)
         if y is None:
-            raise SeriesParseError(f"«{part}» — y має бути числом")
+            raise SeriesParseError(tr("«{part}» — y має бути числом").format(part=part))
         x: float | str
         if param.x_kind == "number":
             number = _parse_number(x_text)
             if number is None:
-                raise SeriesParseError(f"«{part}» — ключ x має бути числом")
+                raise SeriesParseError(tr("«{part}» — ключ x має бути числом").format(part=part))
             x = number
         else:
             if len(x_text) > MAX_LABEL_LEN:
-                raise SeriesParseError(f"Мітка «{x_text}» довша за {MAX_LABEL_LEN} символів")
+                raise SeriesParseError(
+                    tr("Мітка «{x_text}» довша за {MAX_LABEL_LEN} символів").format(
+                        x_text=x_text, MAX_LABEL_LEN=MAX_LABEL_LEN
+                    )
+                )
             x = x_text
         points.append(SeriesPoint(x=x, y=y))
     if len(points) > param.max_points:
-        raise SeriesParseError(f"Максимум {param.max_points} точок")
+        raise SeriesParseError(
+            tr("Максимум {max_points} точок").format(max_points=param.max_points)
+        )
     if len({str(p.x) for p in points}) != len(points):
-        raise SeriesParseError("Ключі x мають бути різними")
+        raise SeriesParseError(tr("Ключі x мають бути різними"))
     if param.x_kind == "number":
         points.sort(key=lambda p: float(p.x))
     return points

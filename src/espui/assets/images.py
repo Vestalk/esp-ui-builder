@@ -23,6 +23,7 @@ from PIL import Image, ImageSequence
 
 from espui.core.colors import parse_hex
 from espui.core.models import MAX_ANIMATION_FRAMES, ImageAsset
+from espui.i18n import tr
 
 Fit = Literal["contain", "cover", "fill"]
 VIDEO_SUFFIXES = frozenset({".mp4", ".webm", ".mov", ".mkv"})
@@ -90,11 +91,13 @@ def _video_frames(path: Path) -> Frames:
     try:
         import av
     except ImportError:  # pragma: no cover - depends on the environment
-        raise ImageImportError("Для відео встановіть пакет «av» (pip install av).") from None
+        raise ImageImportError(tr("Для відео встановіть пакет «av» (pip install av).")) from None
     try:
         container = av.open(str(path))
     except Exception as error:
-        raise ImageImportError(f"Не вдалося відкрити відео «{path.name}»: {error}") from None
+        raise ImageImportError(
+            tr("Не вдалося відкрити відео «{name}»: {error}").format(name=path.name, error=error)
+        ) from None
     with container:
         stream = container.streams.video[0]
         rate = float(stream.average_rate or MAX_VIDEO_FPS)
@@ -106,7 +109,7 @@ def _video_frames(path: Path) -> Frames:
             if index % step == 0:
                 frames.append(frame.to_image().convert("RGBA"))  # type: ignore[no-untyped-call]
     if not frames:
-        raise ImageImportError(f"У відео «{path.name}» немає кадрів")
+        raise ImageImportError(tr("У відео «{name}» немає кадрів").format(name=path.name))
     picked = thin(frames)
     duration_ms = len(frames) * step * 1000 / rate
     return Frames(picked, max(20, min(5000, round(duration_ms / len(picked)))))
@@ -139,7 +142,9 @@ def import_image(path: str | Path, taken: Sequence[str] | set[str] = ()) -> tupl
         image.load()
     except Exception:
         raise ImageImportError(
-            f"«{file.name}» не схожий на картинку (PNG, JPG, WebP, GIF) чи відео (MP4, WebM)"
+            tr("«{name}» не схожий на картинку (PNG, JPG, WebP, GIF) чи відео (MP4, WebM)").format(
+                name=file.name
+            )
         ) from None
     mime = Image.MIME.get(image.format or "", "application/octet-stream")
     if getattr(image, "n_frames", 1) > 1:
@@ -174,7 +179,9 @@ def decode(asset: ImageAsset) -> list[Image.Image]:
             image = Image.open(io.BytesIO(base64.b64decode(item)))
             image.load()
         except Exception:
-            raise ImageImportError(f"Картинку «{asset.name}» не вдалося прочитати") from None
+            raise ImageImportError(
+                tr("Картинку «{name}» не вдалося прочитати").format(name=asset.name)
+            ) from None
         images.append(image.convert("RGBA"))
     return images
 

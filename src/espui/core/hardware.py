@@ -12,6 +12,8 @@ from dataclasses import dataclass, field
 from enum import StrEnum
 from types import MappingProxyType
 
+from espui.i18n import tr
+
 
 class Chip(StrEnum):
     """Microcontrollers a project can target (``display.mcu`` in ``.espui``)."""
@@ -39,11 +41,15 @@ class ChipPinRules:
         ``input_only_ok``: the pin is only read (MISO, an IRQ), input-only GPIOs suit it.
         """
         if not 0 <= gpio <= self.max_gpio:
-            return f"на {self.label} GPIO від 0 до {self.max_gpio}"
+            return tr("на {label} GPIO від 0 до {max_gpio}").format(
+                label=self.label, max_gpio=self.max_gpio
+            )
         if gpio in self.reserved:
-            return f"GPIO{gpio} зайнятий ({self.reserved[gpio]})"
+            return tr("GPIO{gpio} зайнятий ({v1})").format(gpio=gpio, v1=self.reserved[gpio])
         if gpio in self.input_only and not input_only_ok:
-            return f"GPIO{gpio} на {self.label} працює лише на вхід"
+            return tr("GPIO{gpio} на {label} працює лише на вхід").format(
+                gpio=gpio, label=self.label
+            )
         return None
 
 
@@ -57,13 +63,13 @@ CHIP_RULES: Mapping[Chip, ChipPinRules] = MappingProxyType(
         Chip.ESP32: ChipPinRules(
             "ESP32",
             39,
-            _reserved(range(6, 12), "внутрішній флеш"),
+            _reserved(range(6, 12), tr("внутрішній флеш")),
             input_only=frozenset(range(34, 40)),
         ),
         Chip.ESP32C3: ChipPinRules(
             "ESP32-C3",
             21,
-            {**_reserved(range(12, 18), "флеш"), **_reserved((18, 19), "USB")},
+            {**_reserved(range(12, 18), tr("флеш")), **_reserved((18, 19), "USB")},
         ),
     }
 )

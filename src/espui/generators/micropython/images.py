@@ -21,6 +21,7 @@ from PIL import Image
 
 from espui.assets.images import Fit, decode, render, to_rgb565
 from espui.core.models import ImageAsset, Page, Project, Widget
+from espui.i18n import tr
 
 LARGE_ANIMATION_BYTES = 512 * 1024
 
@@ -59,11 +60,11 @@ class ImagePlan:
             folders[name] = folders.get(name, 0) + len(data)
         total = sum(folders.values())
         items = ", ".join(f"{name} {_kb(size)}" for name, size in folders.items())
-        return [f"Картинки: {items} — разом {_kb(total)}"]
+        return [tr("Картинки: {items} — разом {v1}").format(items=items, v1=_kb(total))]
 
 
 def _kb(size: int) -> str:
-    return f"{size / 1024:.1f} КБ".replace(".", ",")
+    return tr("{v1:.1f} КБ").format(v1=size / 1024).replace(".", ",")
 
 
 def _variant_path(asset: ImageAsset, variant: Variant, primary: Variant) -> str:
@@ -119,9 +120,11 @@ def plan(
     if len(looks) > 1:
         ids = ", ".join(w.id for _, w in bound)
         result.warnings.append(
-            f"Елементи {ids} беруть картинку з параметра, але мають різний розмір, вписування "
-            f"чи фон сторінки: файли бібліотеки конвертуються під «{bound[0][1].id}», "
-            "у решти буде сірий прямокутник або інший фон."
+            tr(
+                "Елементи {ids} беруть картинку з параметра, але мають різний "
+                "розмір, вписування чи фон сторінки: файли бібліотеки конвертуються "
+                "під «{id}», у решти буде сірий прямокутник або інший фон."
+            ).format(ids=ids, id=bound[0][1].id)
         )
     for page, widget in bound:
         for key in project.images:
@@ -162,6 +165,8 @@ def _convert(
     result.animations[path] = (path, len(frames), delay)
     if total > LARGE_ANIMATION_BYTES:
         result.warnings.append(
-            f"Анімація {rel}: {len(frames)} кадрів {v.width}×{v.height} ≈ {_kb(total)} флешу; "
-            "зменште розмір елемента або кількість кадрів."
+            tr(
+                "Анімація {rel}: {v1} кадрів {width}×{height} ≈ {v} флешу; зменште "
+                "розмір елемента або кількість кадрів."
+            ).format(rel=rel, v1=len(frames), width=v.width, height=v.height, v=_kb(total))
         )

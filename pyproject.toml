@@ -8,7 +8,6 @@ dynamic = ["version"]
 description = "Visual UI builder for ESP32 displays that generates MicroPython code"
 readme = "README.md"
 requires-python = ">=3.11"
-license = { text = "MIT" }
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
@@ -88,6 +87,8 @@ ignore = ["RUF001", "RUF002", "RUF003"]
 # RUF012/RUF046: plain class attributes and int(floor()) are deliberate for MicroPython.
 "src/espui/generators/micropython/runtime/*.py" = ["UP", "RUF012", "RUF046"]
 "tests/runtime/runtime_scenarios.py" = ["UP"]
+# The translations: one text per line, however long.
+"src/espui/i18n_en.py" = ["E501"]
 # Qt overrides keep Qt's camelCase names (keyPressEvent, boundingRect, ...).
 "src/espui/gui/*.py" = ["N802"]
 # The style sheet reads best one rule per line.

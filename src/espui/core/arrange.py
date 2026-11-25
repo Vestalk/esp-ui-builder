@@ -10,21 +10,22 @@ from collections.abc import Sequence
 from typing import Literal
 
 from espui.core.models import Widget
+from espui.i18n import tr
 
 Align = Literal["left", "hcenter", "right", "top", "vcenter", "bottom"]
 Distribute = Literal["horizontal", "vertical"]
 
 ALIGN_TITLES: dict[Align, str] = {
-    "left": "Вирівняти за лівим краєм",
-    "hcenter": "Вирівняти по центру (горизонтально)",
-    "right": "Вирівняти за правим краєм",
-    "top": "Вирівняти за верхом",
-    "vcenter": "Вирівняти по середині (вертикально)",
-    "bottom": "Вирівняти за низом",
+    "left": tr("Вирівняти за лівим краєм"),
+    "hcenter": tr("Вирівняти по центру (горизонтально)"),
+    "right": tr("Вирівняти за правим краєм"),
+    "top": tr("Вирівняти за верхом"),
+    "vcenter": tr("Вирівняти по середині (вертикально)"),
+    "bottom": tr("Вирівняти за низом"),
 }
 DISTRIBUTE_TITLES: dict[Distribute, str] = {
-    "horizontal": "Розподілити горизонтально",
-    "vertical": "Розподілити вертикально",
+    "horizontal": tr("Розподілити горизонтально"),
+    "vertical": tr("Розподілити вертикально"),
 }
 
 

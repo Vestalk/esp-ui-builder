@@ -13,6 +13,7 @@ from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from espui import __version__
+from espui.i18n import tr
 
 Handler = Callable[[argparse.Namespace], int]
 
@@ -62,15 +63,15 @@ def _generate(args: argparse.Namespace) -> int:
         project = serializer.load(args.project)
         result = generate(project, args.page, source=args.project.name)
     except (ProjectError, GenerationError) as error:
-        print(f"Помилка: {error}", file=sys.stderr)
+        print(tr("Помилка: {error}").format(error=error), file=sys.stderr)
         return 1
     for warning in result.warnings:
-        print(f"Увага: {warning}", file=sys.stderr)
+        print(tr("Увага: {warning}").format(warning=warning), file=sys.stderr)
     for note in result.notes:
         print(note)
     paths = result.write(args.out)
     titles = ", ".join(f"«{name}»" for name in result.pages)
-    label = "Сторінка" if len(result.pages) == 1 else "Сторінки"
+    label = tr("Сторінка") if len(result.pages) == 1 else tr("Сторінки")
     print(f"{label} {titles} → {args.out}:")
     for path in paths:
         name = path.relative_to(args.out).as_posix()

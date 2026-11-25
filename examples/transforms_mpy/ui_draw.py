@@ -841,6 +841,8 @@ class Busy:
 
 
 RELEASE_POLLS = 2  # readings without a touch before the finger counts as lifted
+ANIM_PERIOD_MS = 20  # the background timer: animations (and the touch panel) are served this often
+TIMER_ID = 0  # one hardware timer serves a page's animations and touch panel
 
 
 # ------------------------------------------------------------------ page engine
@@ -914,7 +916,12 @@ class Page:
         self._box = None  # box of the widget being drawn
         self.actions = actions  # {"procedure name": function} (or globals() / a module)
         self._touch = None
-        self._timer = None
+        self._touch_on = False
+        self._timer = None  # the background timer (animations, touch panel), or None
+        self._period = 0
+        self._timer_id = TIMER_ID
+        self._animating = False  # the timer advances the animations
+        self._auto = False  # draw() started them: play() / a new folder wakes the timer
         self._pressed = False
         self._up = 0
         # Animations: widget index -> [frame, last tick ms, playing, folder, loop]
@@ -934,11 +941,14 @@ class Page:
             if fns[i] is not None:
                 self._boxes[i] = fns[i]()
 
-    def draw(self, p=None, actions=None):
+    def draw(self, p=None, actions=None, animate=True):
         """Redraw the whole screen.
 
         ``actions``: {"procedure name": function} for the names set in the editor
         ("При натиску"), e.g. {"start_pump": start_pump}; checked right away.
+        ``animate``: the page's animations play by themselves (a background timer:
+        "once" ones stop on the last frame, "loop" ones repeat). False: nothing
+        moves until you call tick() yourself (frame by frame, at your pace).
         """
         if actions is not None:
             self.set_actions(actions)
@@ -947,6 +957,11 @@ class Page:
         self._refresh_boxes()
         self._render((0, 0, self.width, self.height))
         self._prev = snapshot(self.p)
+        self._auto = animate and bool(self._anim)
+        if self._auto:
+            self.start_animations()
+        elif not animate:
+            self.stop_animations()
 
     def update(self, p=None):
         """Redraw only widgets whose parameters changed; returns the number of regions."""
@@ -980,6 +995,8 @@ class Page:
                     break
         n = self._render_rects(rects)
         self._prev = snapshot(cur)
+        if self._auto and not self._animating and self._playing():
+            self.start_animations()  # a new folder from a parameter: play it
         return n
 
     def _render_rects(self, rects):
@@ -1009,8 +1026,9 @@ class Page:
     def tick(self, now=None):
         """Advance the animations whose next frame is due (non-blocking).
 
-        Call it often (e.g. every 10 ms); only the widgets that change are
-        redrawn. Returns the number of regions written to the display.
+        draw()'s background timer calls it by itself; call it yourself only with
+        draw(p, animate=False) (frame by frame, at your own pace). Only the
+        widgets that change are redrawn. Returns the number of regions written.
         """
         if self._prev is None or not self._anim:
             return 0
@@ -1035,13 +1053,90 @@ class Page:
         return self._render_rects(rects) if rects else 0
 
     def play(self, wid):
-        """Restart animated widget ``wid`` from its first frame."""
+        """Play animated widget ``wid`` from its first frame (again).
+
+        With draw()'s background timer it then runs by itself; "once" stops on
+        the last frame, "loop" repeats.
+        """
         i = self._index[wid]
         st = self._anim[i]
         st[0] = 0
         st[1] = ticks_ms()
         st[2] = True
-        return self._render_rects([self._boxes[i]]) if self._prev is not None else 0
+        n = self._render_rects([self._boxes[i]]) if self._prev is not None else 0
+        if self._auto and not self._animating:
+            self.start_animations()
+        return n
+
+    def playing(self, wid):
+        """True while animated widget ``wid`` still has frames to show."""
+        i = self._index[wid]
+        return self._anim[i][2] and self._anim_fns[i]() is not None
+
+    def _playing(self):
+        """Some animation still has frames to show (one without a folder now doesn't count)."""
+        fns = self._anim_fns
+        return any(st[2] and fns[i]() is not None for i, st in self._anim.items())
+
+    def start_animations(self, period_ms=ANIM_PERIOD_MS):
+        """Advance the animations in the background (draw() does it by itself).
+
+        Returns False where there is no hardware timer (the unix port in tests):
+        then call tick() yourself.
+        """
+        if not self._anim:
+            return False
+        self._animating = True
+        return self._run_timer(period_ms)
+
+    def stop_animations(self):
+        """No more frames by themselves; tick() still advances them by hand."""
+        self._animating = False
+        self._release_timer()
+
+    def stop(self):
+        """Stop everything in the background: animations and the touch panel."""
+        self._animating = False
+        self._auto = False
+        self._touch_on = False
+        if self._timer is not None:
+            self._timer.deinit()
+            self._timer = None
+
+    # -------------------------------------------------------------- the background timer
+    def _run_timer(self, period_ms):
+        try:
+            from machine import Timer
+        except ImportError:  # no hardware timers here
+            return False
+        if self._timer is not None and self._period == period_ms:
+            return True
+        if self._timer is not None:
+            self._timer.deinit()
+        self._timer = Timer(self._timer_id)
+        self._period = period_ms
+        self._timer.init(mode=Timer.PERIODIC, period=period_ms, callback=self._service)
+        return True
+
+    def _release_timer(self):
+        if self._timer is not None and not self._animating and not self._touch_on:
+            self._timer.deinit()
+            self._timer = None
+
+    def _service(self, _timer):
+        """The timer's work: the touch panel, then the animations."""
+        if _busy[0]:
+            return  # the bus is in use: look again on the next tick
+        if self._touch_on:
+            self._touch_tick(_timer)
+        if self._animating:
+            try:
+                self.tick()
+            except Exception as e:  # keep the timer alive
+                print("animation:", e)
+            if not self._playing():  # every "once" animation has finished
+                self._animating = False
+                self._release_timer()
 
     # -------------------------------------------------------------- opacity
     def begin_alpha(self, fb):
@@ -1164,18 +1259,18 @@ class Page:
             touch = ui_display.create_touch(self.display)
             if touch is None:
                 raise ValueError("the display has no touch panel (Дисплей → Сенсорний екран)")
-        self.stop_touch()
         self._touch = touch
-        from machine import Timer
-
-        self._timer = Timer(timer_id)
-        self._timer.init(mode=Timer.PERIODIC, period=period_ms, callback=self._touch_tick)
+        self._touch_on = True
+        if self._timer is None:
+            self._timer_id = timer_id
+        if not self._run_timer(min(period_ms, ANIM_PERIOD_MS) if self._animating else period_ms):
+            raise OSError("no hardware timer: call ui.poll_touch() in your own loop")
         return touch
 
     def stop_touch(self):
-        if self._timer is not None:
-            self._timer.deinit()
-            self._timer = None
+        """Stop reading the touch panel (the animations keep playing)."""
+        self._touch_on = False
+        self._release_timer()
 
     def _touch_tick(self, _timer):
         if _busy[0]:

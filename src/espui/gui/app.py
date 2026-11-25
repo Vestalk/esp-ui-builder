@@ -10,6 +10,7 @@ from PySide6.QtWidgets import QApplication, QMessageBox
 
 from espui.gui.main_window import MainWindow
 from espui.gui.start_dialog import show_on_start
+from espui.i18n import language, tr
 
 
 def install_ukrainian(app: QCoreApplication) -> bool:
@@ -23,7 +24,8 @@ def install_ukrainian(app: QCoreApplication) -> bool:
 
 def run(argv: Sequence[str] | None = None, project: str | None = None) -> int:
     app = QApplication.instance() or QApplication(list(argv or sys.argv))
-    install_ukrainian(app)
+    if language() == "uk":  # Qt's own buttons and dialogs in Ukrainian too
+        install_ukrainian(app)
     app.setOrganizationName("ESP UI Builder")
     app.setApplicationName("ESP UI Builder")
     window = MainWindow()
@@ -33,8 +35,8 @@ def run(argv: Sequence[str] | None = None, project: str | None = None) -> int:
     elif window.autosaver.recovery_available():
         answer = QMessageBox.question(
             window,
-            "Відновлення",
-            "Минулого разу залишився незбережений проєкт. Відновити його?",
+            tr("Відновлення"),
+            tr("Минулого разу залишився незбережений проєкт. Відновити його?"),
         )
         if answer == QMessageBox.StandardButton.Yes:
             window.autosaver.restore()

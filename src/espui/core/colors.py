@@ -10,6 +10,8 @@ from __future__ import annotations
 import re
 from typing import NamedTuple
 
+from espui.i18n import tr
+
 HEX_RE = re.compile(r"^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$")
 
 
@@ -26,7 +28,9 @@ def is_hex(value: str) -> bool:
 def normalize_hex(value: str) -> str:
     """``#ABC`` / ``#AaBbCc`` -> ``#aabbcc``; ValueError if not a hex colour."""
     if not is_hex(value):
-        raise ValueError(f"колір має бути у форматі #rrggbb, отримано {value!r}")
+        raise ValueError(
+            tr("колір має бути у форматі #rrggbb, отримано {value!r}").format(value=value)
+        )
     digits = value[1:].lower()
     if len(digits) == 3:
         digits = "".join(c * 2 for c in digits)

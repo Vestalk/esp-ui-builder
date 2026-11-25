@@ -15,6 +15,8 @@ from typing import Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field
 
+from espui.i18n import tr
+
 DEFAULT_MODEL = "GMT020-02-8B"
 CUSTOM_MODEL = "custom"
 """``Display.model`` of a panel described by hand (``Display.custom``)."""
@@ -45,13 +47,18 @@ CONTROLLERS: Mapping[str, ControllerInfo] = MappingProxyType(
             "ST7789", (240, 320), "RGB565", (0x00, 0x60, 0xC0, 0xA0), False, True
         ),
         "ILI9488": ControllerInfo(
-            "ILI9488 (18-біт колір)", (320, 480), "RGB666", (0x40, 0x20, 0x80, 0xE0), True, False
+            tr("ILI9488 (18-біт колір)"),
+            (320, 480),
+            "RGB666",
+            (0x40, 0x20, 0x80, 0xE0),
+            True,
+            False,
         ),
         "ILI9341": ControllerInfo(
             "ILI9341", (240, 320), "RGB565", (0x40, 0x20, 0x80, 0xE0), True, False
         ),
         "GC9A01": ControllerInfo(
-            "GC9A01 (круглий)", (240, 240), "RGB565", (0x40, 0x20, 0x80, 0xE0), True, True
+            tr("GC9A01 (круглий)"), (240, 240), "RGB565", (0x40, 0x20, 0x80, 0xE0), True, True
         ),
     }
 )
@@ -141,7 +148,9 @@ def custom_profile(
         invert = info.invert
     return DisplayProfile(
         model=CUSTOM_MODEL,
-        title=f"Свій: {width}×{height} {controller}",
+        title=tr("Свій: {width}×{height} {controller}").format(
+            width=width, height=height, controller=controller
+        ),
         controller=controller,
         width=width,
         height=height,
@@ -164,7 +173,9 @@ class UnknownDisplayError(KeyError):
 
     def __str__(self) -> str:
         known = ", ".join(load_profiles())
-        return f"невідомий дисплей «{self.model}»; підтримуються: {known}"
+        return tr("невідомий дисплей «{model}»; підтримуються: {known}").format(
+            model=self.model, known=known
+        )
 
 
 @cache

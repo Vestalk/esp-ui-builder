@@ -15,7 +15,6 @@ from PySide6.QtCore import QSettings, Qt, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractSpinBox,
-    QButtonGroup,
     QCheckBox,
     QColorDialog,
     QComboBox,
@@ -29,7 +28,6 @@ from PySide6.QtWidgets import (
     QListWidget,
     QListWidgetItem,
     QPushButton,
-    QRadioButton,
     QScrollArea,
     QSlider,
     QSpinBox,
@@ -68,19 +66,20 @@ from espui.gui.help import show_help
 from espui.gui.rules_editor import PROP_TITLES, RulesEditor
 from espui.gui.swatches import ColorSwatches, offer_in_dialog
 from espui.gui.widgets_catalog import TITLES, change_type, controlled_props
+from espui.i18n import tr
 
 PIVOT_TITLES = {
-    "center": "центр",
-    "top_left": "лівий верхній кут",
-    "top": "середина верху",
-    "top_right": "правий верхній кут",
-    "left": "середина лівого краю",
-    "right": "середина правого краю",
-    "bottom_left": "лівий нижній кут",
-    "bottom": "середина низу",
-    "bottom_right": "правий нижній кут",
+    "center": tr("центр"),
+    "top_left": tr("лівий верхній кут"),
+    "top": tr("середина верху"),
+    "top_right": tr("правий верхній кут"),
+    "left": tr("середина лівого краю"),
+    "right": tr("середина правого краю"),
+    "bottom_left": tr("лівий нижній кут"),
+    "bottom": tr("середина низу"),
+    "bottom_right": tr("правий нижній кут"),
 }
-IMAGE_FILTER = "Картинки й відео (*.png *.jpg *.jpeg *.webp *.gif *.apng *.mp4 *.webm *.mov)"
+IMAGE_FILTER = tr("Картинки й відео (*.png *.jpg *.jpeg *.webp *.gif *.apng *.mp4 *.webm *.mov)")
 
 
 class ErrorLabel(QLabel):
@@ -130,7 +129,7 @@ class Section(QWidget):
             self.help_button.setObjectName("section_help")
             self.help_button.setText("?")
             self.help_button.setAutoRaise(True)
-            self.help_button.setToolTip(f"Довідка: {title}")
+            self.help_button.setToolTip(tr("Довідка: {title}").format(title=title))
             self.help_button.clicked.connect(lambda: show_help(help_topic, self))
             top.addWidget(self.help_button)
         layout.addLayout(top)
@@ -198,18 +197,18 @@ class PropertiesPanel(QScrollArea):
         bar.addStretch(1)
         self.collapse_all = QToolButton()
         self.collapse_all.setObjectName("collapse_all")
-        self.collapse_all.setText("▸ Згорнути всі")
+        self.collapse_all.setText(tr("▸ Згорнути всі"))
         self.collapse_all.setAutoRaise(True)
         self.collapse_all.clicked.connect(lambda: self.set_all_collapsed(True))
         self.expand_all = QToolButton()
         self.expand_all.setObjectName("expand_all")
-        self.expand_all.setText("▾ Розгорнути всі")
+        self.expand_all.setText(tr("▾ Розгорнути всі"))
         self.expand_all.setAutoRaise(True)
         self.expand_all.clicked.connect(lambda: self.set_all_collapsed(False))
         bar.addWidget(self.collapse_all)
         bar.addWidget(self.expand_all)
         self.layout_.addLayout(bar)
-        self.empty = QLabel("Виберіть елемент на полотні або в шарах.")
+        self.empty = QLabel(tr("Виберіть елемент на полотні або в шарах."))
         self.empty.setWordWrap(True)
         self.empty.setEnabled(False)
         self.layout_.addWidget(self.empty)
@@ -222,9 +221,9 @@ class PropertiesPanel(QScrollArea):
         self._build_look()
         self._build_image()
         self._build_chart()
-        self.rules_section = Section("Умови", help_topic="rules")
+        self.rules_section = Section(tr("Умови"), help_topic="rules")
         self.rules_editor = RulesEditor()
-        self.rules_editor.changed.connect(lambda rules: self.set_field("rules", rules, "Умови"))
+        self.rules_editor.changed.connect(lambda rules: self.set_field("rules", rules, tr("Умови")))
         self.rules_section.form.addRow(self.rules_editor)
         self.layout_.addWidget(self.rules_section)
         self.placeholders = [self.rules_section]
@@ -255,7 +254,7 @@ class PropertiesPanel(QScrollArea):
     # ------------------------------------------------------------------ blocks
     def _build_many(self) -> None:
         """Several widgets selected: what applies to all of them at once."""
-        s = self.many = Section("Кілька елементів", help_topic="arrange")
+        s = self.many = Section(tr("Кілька елементів"), help_topic="arrange")
         self.many_label = QLabel()
         self.many_label.setObjectName("many_label")
         self.many_label.setWordWrap(True)
@@ -265,9 +264,9 @@ class PropertiesPanel(QScrollArea):
         self.many_color_edit = QLineEdit()
         self.many_color_edit.setObjectName("many_color")
         self.many_color_edit.setMaximumWidth(90)
-        self.many_color_edit.setPlaceholderText("різні")
+        self.many_color_edit.setPlaceholderText(tr("різні"))
         self.many_color_edit.editingFinished.connect(
-            lambda: self._set_many("color", self.many_color_edit.text().strip(), "Колір")
+            lambda: self._set_many("color", self.many_color_edit.text().strip(), tr("Колір"))
         )
         color = QWidget()
         crow = QHBoxLayout(color)
@@ -279,7 +278,7 @@ class PropertiesPanel(QScrollArea):
         self.many_opacity.setRange(0, 100)
         self.many_opacity.setSuffix(" %")
         self.many_opacity.valueChanged.connect(
-            lambda v: self._set_many("opacity", v, "Непрозорість")
+            lambda v: self._set_many("opacity", v, tr("Непрозорість"))
         )
         # Align / distribute, as in the "Розташування" menu.
         arrange = QWidget()
@@ -303,31 +302,33 @@ class PropertiesPanel(QScrollArea):
         groups = QWidget()
         grow = QHBoxLayout(groups)
         grow.setContentsMargins(0, 0, 0, 0)
-        self.group_button = QPushButton("Згрупувати")
+        self.group_button = QPushButton(tr("Згрупувати"))
         self.group_button.setObjectName("group_button")
-        self.group_button.setToolTip("Ctrl+Shift+G: клік вибиратиме всю групу, Ctrl(⌘)+клік — один")
+        self.group_button.setToolTip(
+            tr("Ctrl+Shift+G: клік вибиратиме всю групу, Ctrl(⌘)+клік — один")
+        )
         self.group_button.clicked.connect(self.doc.group_selected)
-        self.ungroup_button = QPushButton("Розгрупувати")
+        self.ungroup_button = QPushButton(tr("Розгрупувати"))
         self.ungroup_button.setObjectName("ungroup_button")
         self.ungroup_button.setToolTip("Ctrl+Shift+U")
         self.ungroup_button.clicked.connect(self.doc.ungroup_selected)
         grow.addWidget(self.group_button)
         grow.addWidget(self.ungroup_button)
         grow.addStretch(1)
-        self.many_delete = QPushButton("Видалити всі")
+        self.many_delete = QPushButton(tr("Видалити всі"))
         self.many_delete.setObjectName("many_delete")
         self.many_delete.clicked.connect(lambda: self.doc.remove_widgets(self.doc.selected_ids))
         s.form.addRow(self.many_label)
-        s.form.addRow("Колір", color)
+        s.form.addRow(tr("Колір"), color)
         self.many_swatches = ColorSwatches(
             self.doc,
-            lambda c: self._set_many("color", c, "Колір"),
+            lambda c: self._set_many("color", c, tr("Колір")),
             lambda: self.many_color_edit.text().strip() or None,
         )
         s.form.addRow("", self.many_swatches)
-        s.form.addRow("Непрозорість", self.many_opacity)
-        s.form.addRow("Розташування", arrange)
-        s.form.addRow("Група", groups)
+        s.form.addRow(tr("Непрозорість"), self.many_opacity)
+        s.form.addRow(tr("Розташування"), arrange)
+        s.form.addRow(tr("Група"), groups)
         s.form.addRow(self.many_delete)
         self.layout_.addWidget(s)
 
@@ -337,7 +338,7 @@ class PropertiesPanel(QScrollArea):
         widgets = [w for w in self.doc.page.widgets if w.id in ids]
         if key in DISTRIBUTE_TITLES:
             if len(widgets) < 3:
-                self.message.emit("Розподілити: виберіть щонайменше три елементи")
+                self.message.emit(tr("Розподілити: виберіть щонайменше три елементи"))
                 return
             self.doc.move_each(distribute(widgets, key), DISTRIBUTE_TITLES[key])
             return
@@ -361,26 +362,30 @@ class PropertiesPanel(QScrollArea):
             self.load()
             return
         self.error.setText("")
-        self.doc.set_on_widgets(ids, field, value, f"{text}: {len(ids)} елементів")
+        self.doc.set_on_widgets(
+            ids, field, value, tr("{text}: {v1} елементів").format(text=text, v1=len(ids))
+        )
 
     def _pick_many_color(self) -> None:
         widgets = [w for w in self.doc.page.widgets if w.id in self.doc.selected_ids]
         if not widgets:
             return
         offer_in_dialog(self.doc.project.colors)
-        color = QColorDialog.getColor(QColor(widgets[0].color), self, "Колір")
+        color = QColorDialog.getColor(QColor(widgets[0].color), self, tr("Колір"))
         if color.isValid():
-            self._set_many("color", color.name(), "Колір")
+            self._set_many("color", color.name(), tr("Колір"))
 
     def _load_many(self, ids: list[str]) -> None:
         widgets = [w for w in self.doc.page.widgets if w.id in ids]
         shown = ", ".join(w.id for w in widgets[:6]) + (" …" if len(widgets) > 6 else "")
         names = sorted({w.group for w in widgets if w.group})
         whole = len(names) == 1 and all(w.group == names[0] for w in widgets)
-        group = f" Група «{names[0]}»." if whole else ""
+        group = tr(" Група «{v1}».").format(v1=names[0]) if whole else ""
         self.many_label.setText(
-            f"Вибрано {len(widgets)}: {shown}.{group} Колір і непрозорість — для всіх одразу; "
-            "перетягування й стрілки рухають усі разом."
+            tr(
+                "Вибрано {v1}: {shown}.{group} Колір і непрозорість — для всіх "
+                "одразу; перетягування й стрілки рухають усі разом."
+            ).format(v1=len(widgets), shown=shown, group=group)
         )
         self.group_button.setEnabled(not whole)
         self.ungroup_button.setEnabled(bool(names))
@@ -396,7 +401,7 @@ class PropertiesPanel(QScrollArea):
         self.many_opacity.setValue(opacities.pop() if len(opacities) == 1 else 100)
 
     def _build_main(self) -> None:
-        s = self.main = Section("Властивості", help_topic="properties")
+        s = self.main = Section(tr("Властивості"), help_topic="properties")
         self.id_edit = QLineEdit()
         self.id_edit.editingFinished.connect(self._id_edited)
         self.type_combo = QComboBox()
@@ -427,12 +432,12 @@ class PropertiesPanel(QScrollArea):
         crow.addWidget(self.color_button)
         crow.addWidget(self.color_edit)
         # Bars and arcs: the number of the value, the fixed track the value fills.
-        self.show_value = QCheckBox("Показувати число")
+        self.show_value = QCheckBox(tr("Показувати число"))
         self.show_value.setObjectName("show_value")
         self.show_value.toggled.connect(lambda on: self.set_field("show_value", on))
         self.track_button = QPushButton()
         self.track_button.setObjectName("track_button")
-        self.track_button.setToolTip("Колір доріжки, яку заповнює значення")
+        self.track_button.setToolTip(tr("Колір доріжки, яку заповнює значення"))
         self.track_button.clicked.connect(self._pick_track_color)
         self.track_edit = QLineEdit()
         self.track_edit.setObjectName("track_edit")
@@ -440,7 +445,7 @@ class PropertiesPanel(QScrollArea):
         self.track_edit.editingFinished.connect(
             lambda: self.set_field("track_color", self.track_edit.text().strip())
         )
-        self.show_track = QCheckBox("Показувати доріжку")
+        self.show_track = QCheckBox(tr("Показувати доріжку"))
         self.show_track.setObjectName("show_track")
         self.show_track.toggled.connect(lambda on: self.set_field("show_track", on))
         track = self.track_row = QWidget()
@@ -462,8 +467,8 @@ class PropertiesPanel(QScrollArea):
         self.font_combo.activated.connect(
             lambda _: self.set_field("font", self.font_combo.currentData())
         )
-        self.font_all = QPushButton("Застосувати до всіх")
-        self.font_all.setToolTip("Цей шрифт для всіх елементів сторінки")
+        self.font_all = QPushButton(tr("Застосувати до всіх"))
+        self.font_all.setToolTip(tr("Цей шрифт для всіх елементів сторінки"))
         self.font_all.clicked.connect(
             lambda: self.doc.apply_font_to_all(self.font_combo.currentData())
         )
@@ -478,47 +483,49 @@ class PropertiesPanel(QScrollArea):
         self.size_spin.valueChanged.connect(lambda v: self.set_field("font_size", v))
         self.on_tap_edit = QLineEdit()
         self.on_tap_edit.setObjectName("on_tap")
-        self.on_tap_edit.setPlaceholderText("назва процедури, напр. start_pump")
+        self.on_tap_edit.setPlaceholderText(tr("назва процедури, напр. start_pump"))
         self.on_tap_edit.setToolTip(
-            "Назва процедури, яку виконати при натиску на елемент\n"
-            "(потрібен сенсорний екран: Дисплей → Сенсорний екран). Самі процедури —\n"
-            'у коді на платі: ui.draw(p, actions={"назва": функція}) і ui.listen_touch().'
+            tr(
+                "Назва процедури, яку виконати при натиску на елемент\n"
+                "(потрібен сенсорний екран: Дисплей → Сенсорний екран). Самі процедури —\n"
+                'у коді на платі: ui.draw(p, actions={"назва": функція}) і ui.listen_touch().'
+            )
         )
         self.on_tap_edit.editingFinished.connect(self._on_tap_edited)
-        self.delete_button = QPushButton("Видалити")
+        self.delete_button = QPushButton(tr("Видалити"))
         self.delete_button.clicked.connect(lambda: self.doc.remove_widget())
 
         s.form.addRow("id", self.id_edit)
-        s.form.addRow("Тип", self.type_combo)
-        s.form.addRow("Позиція, розмір", geometry)
-        s.form.addRow("Колір", color)
+        s.form.addRow(tr("Тип"), self.type_combo)
+        s.form.addRow(tr("Позиція, розмір"), geometry)
+        s.form.addRow(tr("Колір"), color)
         self.swatches = ColorSwatches(
             self.doc,
             lambda c: self.set_field("color", c),
             lambda: self.doc.widget.color if self.doc.widget else None,
         )
         s.form.addRow("", self.swatches)
-        s.form.addRow("Доріжка", self.track_row)
+        s.form.addRow(tr("Доріжка"), self.track_row)
         s.form.addRow("", self.show_track)
         s.form.addRow("", self.show_value)
-        s.form.addRow("Дані з параметра", self.bind_combo)
-        s.form.addRow("Формат / текст", self.format_edit)
-        s.form.addRow("Шрифт", font)
-        s.form.addRow("Шрифт, px", self.size_spin)
+        s.form.addRow(tr("Дані з параметра"), self.bind_combo)
+        s.form.addRow(tr("Формат / текст"), self.format_edit)
+        s.form.addRow(tr("Шрифт"), font)
+        s.form.addRow(tr("Шрифт, px"), self.size_spin)
         s.form.addRow(self.delete_button)
         self.layout_.addWidget(s)
         # Touch: its own block (collapsed by those who don't use a touch panel).
-        tap = self.tap = Section("Натиск", help_topic="touch")
+        tap = self.tap = Section(tr("Натиск"), help_topic="touch")
         self.tap_hint = QLabel()
         self.tap_hint.setObjectName("tap_hint")
         self.tap_hint.setWordWrap(True)
         self.tap_hint.setStyleSheet("color: #d9822b")
-        tap.form.addRow("При натиску", self.on_tap_edit)
+        tap.form.addRow(tr("При натиску"), self.on_tap_edit)
         tap.form.addRow(self.tap_hint)
         self.layout_.addWidget(tap)
 
     def _build_look(self) -> None:
-        s = self.look = Section("Вигляд", help_topic="properties")
+        s = self.look = Section(tr("Вигляд"), help_topic="properties")
         self.controlled_hint = QLabel()
         self.controlled_hint.setObjectName("controlled_hint")
         self.controlled_hint.setWordWrap(True)
@@ -530,8 +537,8 @@ class PropertiesPanel(QScrollArea):
         self.opacity_slider.setRange(0, 100)
         for control in (self.opacity_spin, self.opacity_slider):
             control.valueChanged.connect(lambda v: self.set_field("opacity", v))
-        self.opacity_all = QPushButton("Для всіх елементів")
-        self.opacity_all.setToolTip("Застосувати цю непрозорість до всіх елементів сторінки")
+        self.opacity_all = QPushButton(tr("Для всіх елементів"))
+        self.opacity_all.setToolTip(tr("Застосувати цю непрозорість до всіх елементів сторінки"))
         self.opacity_all.clicked.connect(
             lambda: self.doc.apply_opacity_to_all(self.opacity_spin.value())
         )
@@ -546,7 +553,7 @@ class PropertiesPanel(QScrollArea):
         self.pivot_combo = QComboBox()
         for key in PIVOT_FRACTIONS:
             self.pivot_combo.addItem(PIVOT_TITLES[key], key)
-        self.pivot_combo.addItem("власна точка", "custom")
+        self.pivot_combo.addItem(tr("власна точка"), "custom")
         self.pivot_combo.activated.connect(self._pivot_chosen)
         self.pivot_x = QSpinBox()
         self.pivot_y = QSpinBox()
@@ -562,12 +569,12 @@ class PropertiesPanel(QScrollArea):
         self.opacity_row = self._pair(self.opacity_spin, self.opacity_slider)
         self.angle_row = self._pair(self.angle_spin, self.angle_slider)
         s.form.addRow(self.controlled_hint)
-        s.form.addRow("Непрозорість", self.opacity_row)
+        s.form.addRow(tr("Непрозорість"), self.opacity_row)
         s.form.addRow(self.opacity_all)
-        s.form.addRow("Кут", self.angle_row)
-        s.form.addRow("Точка повороту", self.pivot_combo)
+        s.form.addRow(tr("Кут"), self.angle_row)
+        s.form.addRow(tr("Точка повороту"), self.pivot_combo)
         s.form.addRow("", point)
-        hint = QLabel("Точку повороту можна тягнути червоним хрестиком на полотні.")
+        hint = QLabel(tr("Точку повороту можна тягнути червоним хрестиком на полотні."))
         hint.setWordWrap(True)
         hint.setEnabled(False)
         self.pivot_hint = hint
@@ -584,12 +591,12 @@ class PropertiesPanel(QScrollArea):
         return box
 
     def _build_image(self) -> None:
-        s = self.image = Section("Картинка", help_topic="images")
+        s = self.image = Section(tr("Картинка"), help_topic="images")
         self.file_combo = QComboBox()
         self.file_combo.activated.connect(
             lambda _: self.set_image(file=self.file_combo.currentData())
         )
-        self.add_file = QPushButton("+ Файл…")
+        self.add_file = QPushButton(tr("+ Файл…"))
         self.add_file.clicked.connect(self._add_file)
         files = QWidget()
         row = QHBoxLayout(files)
@@ -598,34 +605,32 @@ class PropertiesPanel(QScrollArea):
         row.addWidget(self.add_file)
         self.fit_combo = QComboBox()
         for key, title in (
-            ("contain", "вписати повністю"),
-            ("cover", "заповнити з обрізанням"),
-            ("fill", "розтягнути"),
+            ("contain", tr("вписати повністю")),
+            ("cover", tr("заповнити з обрізанням")),
+            ("fill", tr("розтягнути")),
         ):
             self.fit_combo.addItem(title, key)
         self.fit_combo.activated.connect(lambda _: self.set_image(fit=self.fit_combo.currentData()))
-        self.native_size = QPushButton("Розмір як у картинки")
+        self.native_size = QPushButton(tr("Розмір як у картинки"))
         self.native_size.clicked.connect(self._native_size)
-        self.loop_radio = QRadioButton("⟳ Цикл")
-        self.once_radio = QRadioButton("→ Один раз")
-        group = QButtonGroup(self)
-        group.addButton(self.loop_radio)
-        group.addButton(self.once_radio)
-        self.loop_radio.toggled.connect(lambda on: on and self.set_image(play="loop"))
-        self.once_radio.toggled.connect(lambda on: on and self.set_image(play="once"))
-        play = QWidget()
-        prow = QHBoxLayout(play)
-        prow.setContentsMargins(0, 0, 0, 0)
-        prow.addWidget(self.loop_radio)
-        prow.addWidget(self.once_radio)
-        self.play_box = play
-        self.restart_button = QPushButton("▶ Програти з початку")
+        self.loop_check = QCheckBox(tr("Програвати циклічно"))
+        self.loop_check.setObjectName("loop_check")
+        self.loop_check.setToolTip(
+            tr(
+                "Без галочки анімація на платі програється сама один раз і зупиняється на "
+                "останньому кадрі; з галочкою — повторюється. Запустити знову з коду: "
+                'ui.play("id").'
+            )
+        )
+        self.loop_check.toggled.connect(lambda on: self.set_image(play="loop" if on else "once"))
+        self.play_box = self.loop_check
+        self.restart_button = QPushButton(tr("▶ Програти з початку"))
         self.restart_button.clicked.connect(
             lambda: self.doc.widget and self.restart_animation(self.doc.widget.id)
         )
         self.delay_spin = QSpinBox()
         self.delay_spin.setRange(20, 5000)
-        self.delay_spin.setSuffix(" мс")
+        self.delay_spin.setSuffix(tr(" мс"))
         self.delay_spin.valueChanged.connect(self._delay_changed)
         self.files_row = files
         self.image_hint = QLabel()
@@ -635,10 +640,10 @@ class PropertiesPanel(QScrollArea):
         self.board_list = QListWidget()
         self.board_list.setMaximumHeight(120)
         self.board_list.itemClicked.connect(self._board_clicked)
-        self.board_add = QPushButton("+ Файли…")
+        self.board_add = QPushButton(tr("+ Файли…"))
         self.board_add.clicked.connect(self._add_board_files)
         self.board_remove = QPushButton("×")
-        self.board_remove.setToolTip("Прибрати вибрану картинку з бібліотеки")
+        self.board_remove.setToolTip(tr("Прибрати вибрану картинку з бібліотеки"))
         self.board_remove.clicked.connect(self._remove_board_file)
         board_buttons = QWidget()
         brow = QHBoxLayout(board_buttons)
@@ -647,25 +652,27 @@ class PropertiesPanel(QScrollArea):
         brow.addWidget(self.board_remove)
         self.board_buttons = board_buttons
         self.board_hint = QLabel(
-            "Клік — показати в прев'ю (стає тестовим значенням параметра). "
-            "На платі шлях до картинки передає ваш код."
+            tr(
+                "Клік — показати в прев'ю (стає тестовим значенням параметра). "
+                "На платі шлях до картинки передає ваш код."
+            )
         )
         self.board_hint.setWordWrap(True)
         self.board_hint.setEnabled(False)
-        s.form.addRow("Файл", files)
+        s.form.addRow(tr("Файл"), files)
         s.form.addRow(self.image_hint)
-        s.form.addRow("Картинки на платі (/img)", self.board_list)
+        s.form.addRow(tr("Картинки на платі (/img)"), self.board_list)
         s.form.addRow(self.board_buttons)
         s.form.addRow(self.board_hint)
-        s.form.addRow("Вписування", self.fit_combo)
+        s.form.addRow(tr("Вписування"), self.fit_combo)
         s.form.addRow(self.native_size)
-        s.form.addRow("Відтворення", play)
+        s.form.addRow(tr("Відтворення"), self.loop_check)
         s.form.addRow(self.restart_button)
-        s.form.addRow("Кадр", self.delay_spin)
+        s.form.addRow(tr("Кадр"), self.delay_spin)
         self.layout_.addWidget(s)
 
     def _build_chart(self) -> None:
-        s = self.chart = Section("Графік", help_topic="parameters")
+        s = self.chart = Section(tr("Графік"), help_topic="parameters")
         self.axis_x = QLineEdit()
         self.axis_x.setMaxLength(16)
         self.axis_x.editingFinished.connect(lambda: self.set_chart(axis_x=self.axis_x.text()))
@@ -674,27 +681,31 @@ class PropertiesPanel(QScrollArea):
         self.axis_y.editingFinished.connect(lambda: self.set_chart(axis_y=self.axis_y.text()))
         self.y_bounds: dict[str, QLineEdit] = {}
         rows = []
-        for field, title in (("y_min", "Y мін"), ("y_max", "Y макс")):
+        for field, title in (("y_min", tr("Y мін")), ("y_max", tr("Y макс"))):
             edit = QLineEdit()
-            edit.setPlaceholderText("авто")
-            edit.setToolTip("Порожньо — авто: межі параметра, розширені до даних")
+            edit.setPlaceholderText(tr("авто"))
+            edit.setToolTip(tr("Порожньо — авто: межі параметра, розширені до даних"))
             edit.editingFinished.connect(self._bounds_edited)
             self.y_bounds[field] = edit
             rows.append((title, edit))
         self.style_combo = QComboBox()
-        for key, title in (("line", "лінія"), ("dots", "лінія з точками"), ("bars", "стовпці")):
+        for key, title in (
+            ("line", tr("лінія")),
+            ("dots", tr("лінія з точками")),
+            ("bars", tr("стовпці")),
+        ):
             self.style_combo.addItem(title, key)
         self.style_combo.activated.connect(
             lambda _: self.set_chart(style=self.style_combo.currentData())
         )
-        self.grid_check = QCheckBox("3 лінії: мін, середина, макс")
+        self.grid_check = QCheckBox(tr("3 лінії: мін, середина, макс"))
         self.grid_check.toggled.connect(lambda on: self.set_chart(grid=on))
-        s.form.addRow("Підпис осі X", self.axis_x)
-        s.form.addRow("Підпис осі Y", self.axis_y)
+        s.form.addRow(tr("Підпис осі X"), self.axis_x)
+        s.form.addRow(tr("Підпис осі Y"), self.axis_y)
         for title, box in rows:
             s.form.addRow(title, box)
-        s.form.addRow("Вигляд", self.style_combo)
-        s.form.addRow("Сітка", self.grid_check)
+        s.form.addRow(tr("Вигляд"), self.style_combo)
+        s.form.addRow(tr("Сітка"), self.grid_check)
         self.layout_.addWidget(s)
 
     # ------------------------------------------------------------------ load
@@ -757,7 +768,7 @@ class PropertiesPanel(QScrollArea):
         self.color_edit.setText(w.color)
         self.color_button.setStyleSheet(f"background: {w.color}; min-width: 40px")
         self.bind_combo.clear()
-        self.bind_combo.addItem("— немає —", None)
+        self.bind_combo.addItem(tr("— немає —"), None)
         for param in self.doc.page.parameters:
             if can_bind(w.type, param):
                 self.bind_combo.addItem(f"{param.name} ({param.type})", param.name)
@@ -821,25 +832,28 @@ class PropertiesPanel(QScrollArea):
             names = controlled.get(prop)
             for control in controls:
                 control.setEnabled(not names)
-                control.setToolTip(f"Керується в «Умовах»: {', '.join(names)}" if names else "")
+                control.setToolTip(
+                    tr("Керується в «Умовах»: {v1}").format(v1=", ".join(names)) if names else ""
+                )
         parts = [f"{PROP_TITLES[prop]} ({', '.join(names)})" for prop, names in controlled.items()]
-        self.controlled_hint.setText("Змінюється умовами: " + "; ".join(parts) if parts else "")
+        self.controlled_hint.setText(tr("Змінюється умовами: ") + "; ".join(parts) if parts else "")
         self.look.form.setRowVisible(self.controlled_hint, bool(parts))
 
     def _load_image(self, w: Widget) -> None:
         settings = w.image or ImageSettings()
         self.file_combo.clear()
-        self.file_combo.addItem("— немає —", None)
+        self.file_combo.addItem(tr("— немає —"), None)
         for key, item in self.doc.project.images.items():
-            kind = "анімація" if item.is_animation else f"{item.width}×{item.height}"
+            kind = tr("анімація") if item.is_animation else f"{item.width}×{item.height}"
             self.file_combo.addItem(f"{key} ({kind})", key)
         self.file_combo.setCurrentIndex(max(0, self.file_combo.findData(settings.file)))
         self.file_combo.setEnabled(not w.bind)
-        self.file_combo.setToolTip("Шлях береться з параметра" if w.bind else "")
+        self.file_combo.setToolTip(tr("Шлях береться з параметра") if w.bind else "")
         self.fit_combo.setCurrentIndex(self.fit_combo.findData(settings.fit))
         asset = self.doc.project.images.get(settings.file or "")
         animated = asset is not None and asset.is_animation
-        for row in (self.play_box, self.restart_button, self.delay_spin):
+        rows: tuple[QWidget, ...] = (self.play_box, self.restart_button, self.delay_spin)
+        for row in rows:
             self.image.form.setRowVisible(row, animated)
         self.native_size.setEnabled(asset is not None)
         bound = bool(w.bind)
@@ -849,9 +863,13 @@ class PropertiesPanel(QScrollArea):
         if asset is not None and not bound:
             frames = len(asset.frames or []) or 1
             size = frames * w.w * w.h * 2
-            where = asset.path if not asset.is_animation else f"{asset.path} ({frames} кадрів)"
+            where = (
+                asset.path
+                if not asset.is_animation
+                else tr("{path} ({frames} кадрів)").format(path=asset.path, frames=frames)
+            )
             kb = f"{size / 1024:.1f}".replace(".", ",")
-            self.image_hint.setText(f"На платі: {where} · {kb} КБ")
+            self.image_hint.setText(tr("На платі: {where} · {kb} КБ").format(where=where, kb=kb))
         else:
             self.image_hint.setText("")
         self.image.form.setRowVisible(self.image_hint, bool(self.image_hint.text()))
@@ -867,7 +885,7 @@ class PropertiesPanel(QScrollArea):
                     entry.setFont(font)
                     entry.setText("▶ " + entry.text())
                 self.board_list.addItem(entry)
-        (self.loop_radio if settings.play == "loop" else self.once_radio).setChecked(True)
+        self.loop_check.setChecked(settings.play == "loop")
         if asset is not None and asset.delay_ms:
             self.delay_spin.setValue(asset.delay_ms)
 
@@ -881,7 +899,7 @@ class PropertiesPanel(QScrollArea):
         self.grid_check.setChecked(chart.grid)
 
     # ------------------------------------------------------------------ edit
-    def set_field(self, field: str, value: Any, text: str = "Властивість") -> bool:
+    def set_field(self, field: str, value: Any, text: str = tr("Властивість")) -> bool:
         """Validated change of one field of the selected widget (one undo step per field)."""
         widget = self.doc.widget
         if self._loading or widget is None or getattr(widget, field) == value:
@@ -907,7 +925,7 @@ class PropertiesPanel(QScrollArea):
             self.id_edit.setText(widget.id)
             return
         self.error.setText("")
-        self.doc.change_widget(widget.model_copy(update={"id": new_id}), "Перейменувати")
+        self.doc.change_widget(widget.model_copy(update={"id": new_id}), tr("Перейменувати"))
 
     def _type_chosen(self, _index: int) -> None:
         widget = self.doc.widget
@@ -916,7 +934,7 @@ class PropertiesPanel(QScrollArea):
         kind = cast(WidgetType, self.type_combo.currentData())
         new, messages = change_type(widget, kind, self.doc.page)
         if new != widget:
-            self.doc.change_widget(new, "Змінити тип")
+            self.doc.change_widget(new, tr("Змінити тип"))
         for text in messages:
             self.message.emit(text)
         self.error.setText(" ".join(messages))
@@ -926,7 +944,7 @@ class PropertiesPanel(QScrollArea):
         if widget is None:
             return
         offer_in_dialog(self.doc.project.colors)
-        color = QColorDialog.getColor(QColor(widget.color), self, "Колір")
+        color = QColorDialog.getColor(QColor(widget.color), self, tr("Колір"))
         if color.isValid():
             self.set_field("color", color.name())
 
@@ -937,17 +955,19 @@ class PropertiesPanel(QScrollArea):
         if self._loading or widget is None or name == widget.on_tap:
             return
         if name is not None and (problem := identifier_problem(name)):
-            self.error.setText(f"При натиску: «{name}» — {problem}")
+            self.error.setText(
+                tr("При натиску: «{name}» — {problem}").format(name=name, problem=problem)
+            )
             self.on_tap_edit.setText(widget.on_tap or "")
             return
-        self.set_field("on_tap", name, "При натиску")
+        self.set_field("on_tap", name, tr("При натиску"))
 
     def _pick_track_color(self) -> None:
         widget = self.doc.widget
         if widget is None:
             return
         offer_in_dialog(self.doc.project.colors)
-        color = QColorDialog.getColor(QColor(widget.track_color), self, "Колір доріжки")
+        color = QColorDialog.getColor(QColor(widget.track_color), self, tr("Колір доріжки"))
         if color.isValid():
             self.set_field("track_color", color.name())
 
@@ -975,10 +995,10 @@ class PropertiesPanel(QScrollArea):
         if self._loading or widget is None:
             return False
         settings = (widget.image or ImageSettings()).model_copy(update=fields)
-        return self.set_field("image", settings.model_dump(), "Картинка")
+        return self.set_field("image", settings.model_dump(), tr("Картинка"))
 
     def _add_file(self) -> None:
-        path, _ = QFileDialog.getOpenFileName(self, "Додати картинку", "", IMAGE_FILTER)
+        path, _ = QFileDialog.getOpenFileName(self, tr("Додати картинку"), "", IMAGE_FILTER)
         if path:
             self.add_image_file(path)
 
@@ -997,7 +1017,7 @@ class PropertiesPanel(QScrollArea):
         asset = self.doc.project.images.get(key or "")
         if widget is not None and asset is not None:
             self.doc.change_widget(
-                widget.model_copy(update={"w": asset.width, "h": asset.height}), "Розмір"
+                widget.model_copy(update={"w": asset.width, "h": asset.height}), tr("Розмір")
             )
 
     def _delay_changed(self, value: int) -> None:
@@ -1011,7 +1031,7 @@ class PropertiesPanel(QScrollArea):
         if self._loading or widget is None:
             return False
         chart = (widget.chart or ChartSettings()).model_copy(update=fields)
-        return self.set_field("chart", chart.model_dump(), "Графік")
+        return self.set_field("chart", chart.model_dump(), tr("Графік"))
 
     def _bounds_edited(self) -> None:
         values: dict[str, float | None] = {}
@@ -1023,13 +1043,14 @@ class PropertiesPanel(QScrollArea):
             try:
                 values[field] = float(text)
             except ValueError:
+                label = tr("Y мін") if field == "y_min" else tr("Y макс")
                 self.error.setText(
-                    f"{'Y мін' if field == 'y_min' else 'Y макс'}: «{text}» — не число"
+                    tr("{label}: «{text}» — не число").format(label=label, text=text)
                 )
                 return
         lo, hi = values["y_min"], values["y_max"]
         if lo is not None and hi is not None and not lo < hi:
-            self.error.setText("Графік: Y мін має бути менше за Y макс")
+            self.error.setText(tr("Графік: Y мін має бути менше за Y макс"))
             return
         self.error.setText("")
         self.set_chart(**values)
@@ -1043,7 +1064,7 @@ class PropertiesPanel(QScrollArea):
             self.doc.set_test_value(widget.bind, asset.path)
 
     def _add_board_files(self) -> None:
-        paths, _ = QFileDialog.getOpenFileNames(self, "Картинки на платі", "", IMAGE_FILTER)
+        paths, _ = QFileDialog.getOpenFileNames(self, tr("Картинки на платі"), "", IMAGE_FILTER)
         if paths:
             self.add_board_files(paths)
 

@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 from espui.core.models import Widget
 from espui.gui.document import Document
 from espui.gui.widgets_catalog import TITLES, badges
+from espui.i18n import tr
 
 ID_ROLE = Qt.ItemDataRole.UserRole
 
@@ -38,10 +39,10 @@ def row_text(level: int, widget: Widget) -> str:
     return f"{level}  " + " · ".join(parts) + (f"  {extra}" if extra else "")
 
 
-HIDE_TIP = "Сховати в редакторі (на платі елемент лишається)"
-SHOW_TIP = "Сховано в редакторі — натисніть, щоб показати (на платі він є)"
-LOCK_TIP = "Заблокувати: на полотні не вибирається й не рухається"
-UNLOCK_TIP = "Заблоковано — натисніть, щоб розблокувати"
+HIDE_TIP = tr("Сховати в редакторі (на платі елемент лишається)")
+SHOW_TIP = tr("Сховано в редакторі — натисніть, щоб показати (на платі він є)")
+LOCK_TIP = tr("Заблокувати: на полотні не вибирається й не рухається")
+UNLOCK_TIP = tr("Заблоковано — натисніть, щоб розблокувати")
 
 
 class LayerRow(QWidget):
@@ -74,11 +75,11 @@ class LayerRow(QWidget):
         layout.addWidget(self.label, 1)
         self.up = QToolButton()
         self.up.setText("↑")
-        self.up.setToolTip("Вище (над іншими)")
+        self.up.setToolTip(tr("Вище (над іншими)"))
         self.up.clicked.connect(on_up)
         self.down = QToolButton()
         self.down.setText("↓")
-        self.down.setToolTip("Нижче")
+        self.down.setToolTip(tr("Нижче"))
         self.down.clicked.connect(on_down)
         layout.addWidget(self.up)
         layout.addWidget(self.down)

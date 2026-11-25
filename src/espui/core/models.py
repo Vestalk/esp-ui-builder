@@ -36,6 +36,7 @@ from espui.displays import (
     custom_profile,
     get_profile,
 )
+from espui.i18n import tr
 
 SCHEMA_VERSION = 1
 
@@ -52,7 +53,7 @@ class Model(BaseModel):
 # ------------------------------------------------------------------ field types
 def _hex_color(value: str) -> str:
     if not is_hex(value):
-        raise PydanticCustomError("color", "колір має бути у форматі #rrggbb")
+        raise PydanticCustomError("color", tr("колір має бути у форматі #rrggbb"))
     return normalize_hex(value)
 
 
@@ -239,7 +240,7 @@ class Condition(Model):
         if (self.when[1] in RANGE_OPERATORS) != is_range:
             raise PydanticCustomError(
                 "condition_range",
-                "«{op}»: діапазон [від, до] потрібен лише для «in» / «not in»",
+                tr("«{op}»: діапазон [від, до] потрібен лише для «in» / «not in»"),
                 {"op": self.when[1]},
             )
         return self
@@ -351,7 +352,8 @@ class ImageSettings(Model):
     file: OptionalRef = None
     """Key in ``Project.images`` for a static picture; ignored when ``bind`` is set."""
     fit: Literal["contain", "cover", "fill"] = "contain"
-    play: Literal["loop", "once"] = "loop"
+    play: Literal["loop", "once"] = "once"
+    """An animation plays by itself once (stops on the last frame), or in a loop."""
 
 
 class ChartSettings(Model):

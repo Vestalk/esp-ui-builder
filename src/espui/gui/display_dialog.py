@@ -40,9 +40,15 @@ from espui.core.models import (
 from espui.core.touch import parse_calibration
 from espui.displays import CONTROLLERS, CUSTOM_MODEL, load_profiles
 from espui.generators.micropython.drivers import DRIVERS
+from espui.i18n import tr
 
-ROTATION_NAMES = ("портрет", "альбом", "портрет, перевернутий", "альбом, перевернутий")
-COLOR_ORDERS = ((None, "як у контролера"), (False, "RGB"), (True, "BGR (червоний ↔ синій)"))
+ROTATION_NAMES = (
+    tr("портрет"),
+    tr("альбом"),
+    tr("портрет, перевернутий"),
+    tr("альбом, перевернутий"),
+)
+COLOR_ORDERS = ((None, tr("як у контролера")), (False, "RGB"), (True, tr("BGR (червоний ↔ синій)")))
 
 
 def rotation_text(rotation: int, size: tuple[int, int]) -> str:
@@ -64,8 +70,8 @@ PIN_LABELS = (
 )
 OPTIONAL_PINS = frozenset({"cs", "rst", "bl", "miso"})
 """May stay empty: the module has no such pin (MISO: only for an XPT2046 touch panel)."""
-TOUCH_KINDS = ((None, "немає"), ("xpt2046", "XPT2046 — резистивний, SPI"),
-               ("cst816s", "CST816S — ємнісний, I2C"))  # fmt: skip
+TOUCH_KINDS = ((None, tr("немає")), ("xpt2046", tr("XPT2046 — резистивний, SPI")),
+               ("cst816s", tr("CST816S — ємнісний, I2C")))  # fmt: skip
 # (label, Touch field, which kinds, suggested GPIO on ESP32-S3)
 TOUCH_PINS = (
     ("T_CS", "cs", "xpt2046", 14),
@@ -80,12 +86,12 @@ TOUCH_PINS = (
 )
 OPTIONAL_TOUCH = frozenset({"irq", "rst", "sck", "mosi", "miso"})
 OWN_BUS = ("sck", "mosi", "miso")
-CALIBRATION_CODE = """\
+CALIBRATION_CODE = tr("""\
 # Калібрування сенсора: торкніться 4 хрестиків по черзі.
 from ui.main import ui_display  # ваша тека сторінки
 
 ui_display.calibrate_touch()  # друкує ESPUI-CAL … — вставте в «Дисплей»
-"""
+""")
 SUGGESTED_MISO = 13
 
 
@@ -93,13 +99,13 @@ def parse_pin(text: str, label: str, optional: bool) -> tuple[int | None, str | 
     """(GPIO or None, problem or None) of a pin field."""
     text = text.strip()
     if not text:
-        return None, None if optional else f"{label}: вкажіть номер GPIO"
+        return None, None if optional else tr("{label}: вкажіть номер GPIO").format(label=label)
     try:
         value = int(text)
     except ValueError:
-        return None, f"{label}: «{text}» — не число"
+        return None, tr("{label}: «{text}» — не число").format(label=label, text=text)
     if value < 0:
-        return None, f"{label}: номер GPIO не може бути від'ємним"
+        return None, tr("{label}: номер GPIO не може бути від'ємним").format(label=label)
     return value, None
 
 
@@ -109,12 +115,12 @@ SCREEN = -1
 """Stands for "a whole screen" in MEMORY_PRESETS (2 * width * height of the panel)."""
 # (title, region buffer, picture cache): typical boards; anything else is "Своє".
 MEMORY_PRESETS = (
-    ("Без PSRAM — буфер 16 КБ, без кешу (типово)", DEFAULT_BUF_BYTES, 0),
-    ("Без PSRAM, більше RAM — буфер 32 КБ", 32 * KB, 0),
-    ("PSRAM 2 МБ — буфер на весь екран, кеш 1 МБ", SCREEN, 1 * MB),
-    ("PSRAM 8 МБ — буфер на весь екран, кеш 4 МБ", SCREEN, 4 * MB),
+    (tr("Без PSRAM — буфер 16 КБ, без кешу (типово)"), DEFAULT_BUF_BYTES, 0),
+    (tr("Без PSRAM, більше RAM — буфер 32 КБ"), 32 * KB, 0),
+    (tr("PSRAM 2 МБ — буфер на весь екран, кеш 1 МБ"), SCREEN, 1 * MB),
+    (tr("PSRAM 8 МБ — буфер на весь екран, кеш 4 МБ"), SCREEN, 4 * MB),
 )
-CUSTOM = "Своє"
+CUSTOM = tr("Своє")
 PSRAM_HINT = 32 * KB
 """Bigger region buffers need PSRAM (docs/benchmarks.md)."""
 
@@ -125,8 +131,8 @@ def field_label(path: str) -> str:
     field = parts[-1]
     if "touch" in parts:
         names = {f: label for label, f, kind, _s in TOUCH_PINS if kind != "cst816s" or f != "irq"}
-        names.update({"sda": "SDA", "scl": "SCL", "rst": "RST", "x_max": "калібрування"})
-        return f"Сенсор {names.get(field, field)}"
+        names.update({"sda": "SDA", "scl": "SCL", "rst": "RST", "x_max": tr("калібрування")})
+        return tr("Сенсор {v1}").format(v1=names.get(field, field))
     return {f: label for label, f in PIN_LABELS}.get(field, field)
 
 
@@ -145,18 +151,18 @@ def display_label(display: Display) -> str:
 class DisplayDialog(QDialog):
     def __init__(self, display: Display, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self.setWindowTitle("Дисплей")
+        self.setWindowTitle(tr("Дисплей"))
         self._display = display
 
         self.model = QComboBox()
         self.model.setObjectName("model")
         for profile in load_profiles().values():
-            self.model.addItem(profile.title, profile.model)
-        self.model.addItem("Свій розмір…", CUSTOM_MODEL)
+            self.model.addItem(tr(profile.title), profile.model)
+        self.model.addItem(tr("Свій розмір…"), CUSTOM_MODEL)
         self.model.setCurrentIndex(max(0, self.model.findData(display.model)))
 
         custom = display.custom or CustomPanel()
-        self.custom_box = QGroupBox("Свій дисплей")
+        self.custom_box = QGroupBox(tr("Свій дисплей"))
         self.custom_box.setObjectName("custom_box")
         cform = QFormLayout(self.custom_box)
         self.controller = QComboBox()
@@ -173,7 +179,7 @@ class DisplayDialog(QDialog):
         for order, order_text in COLOR_ORDERS:
             self.color_order.addItem(order_text, order)
         self.color_order.setCurrentIndex(max(0, [v for v, _ in COLOR_ORDERS].index(custom.bgr)))
-        self.round_panel = QCheckBox("Круглий (видно лише вписане коло)")
+        self.round_panel = QCheckBox(tr("Круглий (видно лише вписане коло)"))
         self.round_panel.setObjectName("round_panel")
         self.round_panel.setChecked(custom.round)
         size_row = QWidget()
@@ -188,22 +194,24 @@ class DisplayDialog(QDialog):
         offset_layout.addWidget(self.offset_x, 0, 0)
         offset_layout.addWidget(QLabel("/"), 0, 1)
         offset_layout.addWidget(self.offset_y, 0, 2)
-        cform.addRow("Контролер", self.controller)
-        cform.addRow("Розмір (портрет), px", size_row)
-        cform.addRow("Зсув у пам'яті x / y", offset_row)
-        cform.addRow("Порядок кольорів", self.color_order)
+        cform.addRow(tr("Контролер"), self.controller)
+        cform.addRow(tr("Розмір (портрет), px"), size_row)
+        cform.addRow(tr("Зсув у пам'яті x / y"), offset_row)
+        cform.addRow(tr("Порядок кольорів"), self.color_order)
         cform.addRow("", self.round_panel)
         hint = QLabel(
-            "Зсув потрібен, коли панель менша за пам'ять контролера (напр. 135×240 ST7789: "
-            "52 / 40). Якщо червоний і синій переплутані — змініть порядок кольорів."
+            tr(
+                "Зсув потрібен, коли панель менша за пам'ять контролера (напр. 135×240 ST7789: "
+                "52 / 40). Якщо червоний і синій переплутані — змініть порядок кольорів."
+            )
         )
         hint.setWordWrap(True)
         hint.setEnabled(False)
         cform.addRow(hint)
 
-        self.invert = QCheckBox("Інверсія кольорів")
+        self.invert = QCheckBox(tr("Інверсія кольорів"))
         self.invert.setObjectName("invert")
-        self.invert.setToolTip("Увімкніть, якщо на платі кольори «негативні» (білий — чорний)")
+        self.invert.setToolTip(tr("Увімкніть, якщо на платі кольори «негативні» (білий — чорний)"))
         self.invert.setChecked(display.inverted)
         self._invert_touched = display.invert is not None
         self._suggested_for = display.model
@@ -216,10 +224,10 @@ class DisplayDialog(QDialog):
 
         self.spi = QComboBox()
         for mhz in SPI_MHZ:
-            self.spi.addItem(f"{mhz} МГц", mhz * 1_000_000)
+            self.spi.addItem(tr("{mhz} МГц").format(mhz=mhz), mhz * 1_000_000)
         index = self.spi.findData(display.spi_hz)
         if index < 0:
-            self.spi.addItem(f"{display.spi_hz / 1_000_000:g} МГц", display.spi_hz)
+            self.spi.addItem(tr("{v1:g} МГц").format(v1=display.spi_hz / 1_000_000), display.spi_hz)
             index = self.spi.count() - 1
         self.spi.setCurrentIndex(index)
 
@@ -238,13 +246,13 @@ class DisplayDialog(QDialog):
 
         self.pins: dict[str, QLineEdit] = {}
         self.pin_labels: dict[str, QLabel] = {}
-        pins_box = QGroupBox("Піни")
+        pins_box = QGroupBox(tr("Піни"))
         grid = QGridLayout(pins_box)
         values = display.pins.model_dump()
         for i, (label, field) in enumerate(PIN_LABELS):
             edit = QLineEdit("" if values[field] is None else str(values[field]))
             edit.setObjectName(f"pin_{field}")
-            edit.setPlaceholderText("немає" if field in OPTIONAL_PINS else "GPIO")
+            edit.setPlaceholderText(tr("немає") if field in OPTIONAL_PINS else "GPIO")
             edit.setMaximumWidth(70)
             self.pins[field] = edit
             caption = QLabel(label)
@@ -252,11 +260,11 @@ class DisplayDialog(QDialog):
             grid.addWidget(caption, i // 3, (i % 3) * 2)
             grid.addWidget(edit, i // 3, (i % 3) * 2 + 1)
             edit.textChanged.connect(self._validate)
-        miso_tip = "Для сенсора XPT2046: по ньому він відповідає платі (спільна шина SPI)"
+        miso_tip = tr("Для сенсора XPT2046: по ньому він відповідає платі (спільна шина SPI)")
         self.pins["miso"].setToolTip(miso_tip)
         self.pin_labels["miso"].setToolTip(miso_tip)
 
-        memory_box = QGroupBox("Пам'ять")
+        memory_box = QGroupBox(tr("Пам'ять"))
         memory = QFormLayout(memory_box)
         self.memory = QComboBox()
         self.memory.setObjectName("memory_preset")
@@ -266,27 +274,31 @@ class DisplayDialog(QDialog):
         self.buffer_kb = QSpinBox()
         self.buffer_kb.setObjectName("buffer_kb")
         self.buffer_kb.setRange(MIN_BUF_BYTES // KB, MAX_BUF_BYTES // KB)
-        self.buffer_kb.setSuffix(" КБ")
+        self.buffer_kb.setSuffix(tr(" КБ"))
         self.buffer_kb.setToolTip(
-            "Скільки RAM на одну смугу області, що перемальовується. Більше — менше смуг\n"
-            "і плавніша зміна; весь екран потребує PSRAM. Більше за екран не виділяється."
+            tr(
+                "Скільки RAM на одну смугу області, що перемальовується. Більше — менше смуг\n"
+                "і плавніша зміна; весь екран потребує PSRAM. Більше за екран не виділяється."
+            )
         )
         self.cache_kb = QSpinBox()
         self.cache_kb.setObjectName("cache_kb")
         self.cache_kb.setRange(0, MAX_IMAGE_CACHE // KB)
         self.cache_kb.setSingleStep(256)
-        self.cache_kb.setSuffix(" КБ")
-        self.cache_kb.setSpecialValueText("вимкнено")
+        self.cache_kb.setSuffix(tr(" КБ"))
+        self.cache_kb.setSpecialValueText(tr("вимкнено"))
         self.cache_kb.setToolTip(
-            "Картинки, прочитані один раз, лишаються в RAM: перемальовування над ними\n"
-            "в кілька разів швидше. Лише для плат з PSRAM; що не влазить — читається з флешу."
+            tr(
+                "Картинки, прочитані один раз, лишаються в RAM: перемальовування над ними\n"
+                "в кілька разів швидше. Лише для плат з PSRAM; що не влазить — читається з флешу."
+            )
         )
         self.memory_note = QLabel()
         self.memory_note.setObjectName("memory_note")
         self.memory_note.setWordWrap(True)
-        memory.addRow("Плата", self.memory)
-        memory.addRow("Буфер області", self.buffer_kb)
-        memory.addRow("Кеш картинок", self.cache_kb)
+        memory.addRow(tr("Плата"), self.memory)
+        memory.addRow(tr("Буфер області"), self.buffer_kb)
+        memory.addRow(tr("Кеш картинок"), self.cache_kb)
         memory.addRow("", self.memory_note)
         self.buffer_kb.setValue(max(1, display.buf_bytes // KB))
         self.cache_kb.setValue(display.image_cache // KB)
@@ -301,13 +313,13 @@ class DisplayDialog(QDialog):
         self.errors.setStyleSheet("color: #c0392b")
 
         form = QFormLayout()
-        form.addRow("Модель", self.model)
+        form.addRow(tr("Модель"), self.model)
         form.addRow(self.custom_box)
         form.addRow("", self.invert)
-        form.addRow("Орієнтація", self.rotation)
-        form.addRow("Частота SPI", self.spi)
-        form.addRow("Чип", self.chip)
-        form.addRow("Драйвер", self.driver)
+        form.addRow(tr("Орієнтація"), self.rotation)
+        form.addRow(tr("Частота SPI"), self.spi)
+        form.addRow(tr("Чип"), self.chip)
+        form.addRow(tr("Драйвер"), self.driver)
         form.addRow("", self.driver_card)
 
         self.buttons = QDialogButtonBox(
@@ -429,7 +441,7 @@ class DisplayDialog(QDialog):
             drives = driver_drives(Driver(key), controller)
             item.setEnabled(drives and DRIVERS[key].supports(Chip(self.chip.currentData())))
             if not drives:
-                item.setToolTip(f"не працює з {controller}")
+                item.setToolTip(tr("не працює з {controller}").format(controller=controller))
         if not driver_drives(Driver(self.driver.currentData()), controller):
             self.driver.setCurrentIndex(self.driver.findData(Driver.BUILTIN.value))
         self._validate()
@@ -478,13 +490,13 @@ class DisplayDialog(QDialog):
         screen = self._screen_bytes()
         width = self._display.profile.width
         if buffer >= screen:
-            strips = "весь екран за раз"
+            strips = tr("весь екран за раз")
         else:
             rows = buffer // (2 * width)
-            strips = f"смуги по ~{rows} рядків на всю ширину"
-        text = f"Буфер: {strips} (екран = {screen // KB} КБ)."
+            strips = tr("смуги по ~{rows} рядків на всю ширину").format(rows=rows)
+        text = tr("Буфер: {strips} (екран = {v1} КБ).").format(strips=strips, v1=screen // KB)
         if buffer > PSRAM_HINT or cache:
-            text += " Потрібна плата з PSRAM."
+            text += tr(" Потрібна плата з PSRAM.")
         return text
 
     # ------------------------------------------------------------------ state
@@ -497,7 +509,9 @@ class DisplayDialog(QDialog):
             item = model.item(row)  # type: ignore[attr-defined]
             supported = info.supports(chip)
             item.setEnabled(supported)
-            item.setToolTip("" if supported else f"не підтримує {chip.label}")
+            item.setToolTip(
+                "" if supported else tr("не підтримує {label}").format(label=chip.label)
+            )
         if not DRIVERS[self.driver.currentData()].supports(chip):
             for row in range(self.driver.count()):
                 if DRIVERS[self.driver.itemData(row)].supports(chip):
@@ -508,7 +522,7 @@ class DisplayDialog(QDialog):
     # ------------------------------------------------------------------ touch
     def _build_touch(self, display: Display) -> QGroupBox:
         touch = display.touch
-        box = QGroupBox("Сенсорний екран")
+        box = QGroupBox(tr("Сенсорний екран"))
         box.setObjectName("touch_box")
         form = self.touch_form = QFormLayout(box)
         self.touch_kind = QComboBox()
@@ -518,13 +532,13 @@ class DisplayDialog(QDialog):
         self.touch_kind.setCurrentIndex(
             max(0, self.touch_kind.findData(touch.kind if touch else None))
         )
-        form.addRow("Чип", self.touch_kind)
+        form.addRow(tr("Чип"), self.touch_kind)
         self.touch_pins: dict[tuple[str, str], QLineEdit] = {}
         for label, field, kind, suggested in TOUCH_PINS:
             value = getattr(touch, field) if touch is not None and touch.kind == kind else None
             edit = QLineEdit("" if value is None else str(value))
             edit.setObjectName(f"touch_{kind}_{field}")
-            edit.setPlaceholderText("немає" if field in OPTIONAL_TOUCH else "GPIO")
+            edit.setPlaceholderText(tr("немає") if field in OPTIONAL_TOUCH else "GPIO")
             edit.setMaximumWidth(70)
             edit.setProperty("suggested", suggested)
             edit.textChanged.connect(self._touch_pin_edited)
@@ -536,7 +550,7 @@ class DisplayDialog(QDialog):
         cal_grid = QGridLayout(cal_row)
         cal_grid.setContentsMargins(0, 0, 0, 0)
         for row, (axis, low, high) in enumerate(
-            (("X: ліво → право", "x_min", "x_max"), ("Y: верх → низ", "y_min", "y_max"))
+            ((tr("X: ліво → право"), "x_min", "x_max"), (tr("Y: верх → низ"), "y_min", "y_max"))
         ):
             cal_grid.addWidget(QLabel(axis), row, 0)
             for col, field in enumerate((low, high)):
@@ -545,8 +559,8 @@ class DisplayDialog(QDialog):
                 self.calibration[field] = spin
                 cal_grid.addWidget(spin, row, 1 + col)
         self.cal_row = cal_row
-        form.addRow("Калібрування", cal_row)
-        self.swap_xy = QCheckBox("Осі X і Y переставлені")
+        form.addRow(tr("Калібрування"), cal_row)
+        self.swap_xy = QCheckBox(tr("Осі X і Y переставлені"))
         self.swap_xy.setObjectName("swap_xy")
         self.swap_xy.setChecked(cal.swap_xy)
         self.swap_xy.toggled.connect(self._validate)
@@ -557,18 +571,21 @@ class DisplayDialog(QDialog):
         board_row.setContentsMargins(0, 0, 0, 0)
         self.cal_paste = QLineEdit()
         self.cal_paste.setObjectName("cal_paste")
-        self.cal_paste.setPlaceholderText("вставте рядок ESPUI-CAL … з плати")
+        self.cal_paste.setPlaceholderText(tr("вставте рядок ESPUI-CAL … з плати"))
         self.cal_paste.textChanged.connect(self._paste_calibration)
-        self.cal_copy = QPushButton("Код калібрування")
+        self.cal_copy = QPushButton(tr("Код калібрування"))
         self.cal_copy.setObjectName("cal_copy")
         self.cal_copy.setToolTip(
-            "Скопіювати код для плати: він покаже 4 хрестики — торкніться кожного,\n"
-            "і плата надрукує рядок ESPUI-CAL, який треба вставити сюди\n\n" + CALIBRATION_CODE
+            tr(
+                "Скопіювати код для плати: він покаже 4 хрестики — торкніться кожного,\n"
+                "і плата надрукує рядок ESPUI-CAL, який треба вставити сюди\n\n"
+            )
+            + CALIBRATION_CODE
         )
         self.cal_copy.clicked.connect(self._copy_calibration_code)
         board_row.addWidget(self.cal_paste, 1)
         board_row.addWidget(self.cal_copy)
-        form.addRow("З плати", cal_board)
+        form.addRow(tr("З плати"), cal_board)
         self.cal_status = QLabel()
         self.cal_status.setObjectName("cal_status")
         self.cal_status.setWordWrap(True)
@@ -589,12 +606,14 @@ class DisplayDialog(QDialog):
             self.touch_form.setRowVisible(row, kind == "xpt2046")
         self.touch_hint.setText(
             {
-                None: "Звичайний дисплей без сенсора.",
-                "xpt2046": "T_CLK, T_DIN, T_DO: порожні — сенсор на шині дисплея (SCL, SDA, "
-                "MISO); заповнені — на своїх пінах (як на CYD). Калібрування — сирі значення "
-                "на краях екрана в портреті; найпростіше — «Код калібрування» на платі й "
-                "вставити надрукований рядок.",
-                "cst816s": "Окрема шина I2C (SDA, SCL); INT і RST — за бажанням.",
+                None: tr("Звичайний дисплей без сенсора."),
+                "xpt2046": tr(
+                    "T_CLK, T_DIN, T_DO: порожні — сенсор на шині дисплея (SCL, SDA, "
+                    "MISO); заповнені — на своїх пінах (як на CYD). Калібрування — сирі значення "
+                    "на краях екрана в портреті; найпростіше — «Код калібрування» на платі й "
+                    "вставити надрукований рядок."
+                ),
+                "cst816s": tr("Окрема шина I2C (SDA, SCL); INT і RST — за бажанням."),
             }[kind]
         )
 
@@ -605,18 +624,22 @@ class DisplayDialog(QDialog):
             return
         values = parse_calibration(text)
         if values is None:
-            self.cal_status.setText("⚠ не схоже на рядок ESPUI-CAL x_min=… x_max=… y_min=… y_max=…")
+            self.cal_status.setText(
+                tr("⚠ не схоже на рядок ESPUI-CAL x_min=… x_max=… y_min=… y_max=…")
+            )
             return
         for field, spin in self.calibration.items():
             spin.setValue(int(values[field]))
         self.swap_xy.setChecked(bool(values["swap_xy"]))
-        self.cal_status.setText("✓ Калібрування з плати застосовано — перегенеруйте сторінку")
+        self.cal_status.setText(tr("✓ Калібрування з плати застосовано — перегенеруйте сторінку"))
 
     def _copy_calibration_code(self) -> None:
         QGuiApplication.clipboard().setText(CALIBRATION_CODE)
         self.cal_status.setText(
-            "Код скопійовано: запустіть його на платі (після генерації сторінки), торкніться "
-            "4 хрестиків і вставте надрукований рядок сюди."
+            tr(
+                "Код скопійовано: запустіть його на платі (після генерації сторінки), торкніться "
+                "4 хрестиків і вставте надрукований рядок сюди."
+            )
         )
 
     def _touch_pin_edited(self) -> None:
@@ -662,7 +685,9 @@ class DisplayDialog(QDialog):
             if pin_kind != kind:
                 continue
             value, problem = parse_pin(
-                self.touch_pins[(pin_kind, field)].text(), f"Сенсор {label}", True
+                self.touch_pins[(pin_kind, field)].text(),
+                tr("Сенсор {label}").format(label=label),
+                True,
             )
             if problem:
                 errors.append(problem)
@@ -720,10 +745,14 @@ class DisplayDialog(QDialog):
     def _validate(self) -> None:
         info = DRIVERS[self.driver.currentData()]
         self.driver_card.setText(
-            "<b>Прошивка:</b> стандартний MicroPython<br>"
-            f"<b>Файли в папці генерації:</b> "
-            f"{', '.join(info.files_for(self._panel().profile.controller))}<br>"
-            f"<b>Швидкість:</b> {info.speed}<br>{info.note}"
+            tr(
+                "<b>Прошивка:</b> стандартний MicroPython<br><b>Файли в папці "
+                "генерації:</b> {v1}<br><b>Швидкість:</b> {speed}<br>{note}"
+            ).format(
+                v1=", ".join(info.files_for(self._panel().profile.controller)),
+                speed=info.speed,
+                note=info.note,
+            )
         )
         self.memory_note.setText(self._memory_text())
         problems = self.problems()

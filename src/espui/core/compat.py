@@ -25,6 +25,7 @@ from espui.core.models import (
     StrParameter,
     WidgetType,
 )
+from espui.i18n import tr
 
 MAX_LABEL_LEN = 7
 
@@ -85,64 +86,74 @@ def _is_number(value: Any) -> bool:
 def value_problem(param: Parameter, value: Any) -> str | None:
     """Ukrainian reason why ``value`` is not valid for ``param``, or None."""
     if isinstance(param, BoolParameter):
-        return None if isinstance(value, bool) else "очікується true або false"
+        return None if isinstance(value, bool) else tr("очікується true або false")
     if isinstance(param, IntParameter):
         if not _is_number(value) or value != int(value):
-            return "очікується ціле число"
+            return tr("очікується ціле число")
         return _range_problem(value, param.min, param.max)
     if isinstance(param, FloatParameter):
         return (
-            "очікується число"
+            tr("очікується число")
             if not _is_number(value)
             else _range_problem(value, param.min, param.max)
         )
     if isinstance(param, StrParameter):
         if not isinstance(value, str):
-            return "очікується рядок"
+            return tr("очікується рядок")
         if len(value) >= param.max_len:
-            return f"довше за {param.max_len - 1} символів"
+            return tr("довше за {v1} символів").format(v1=param.max_len - 1)
         return None
     if isinstance(param, EnumParameter):
         if value not in param.values:
-            return f"має бути одним з варіантів: {', '.join(param.values)}"
+            return tr("має бути одним з варіантів: {v1}").format(v1=", ".join(param.values))
         return None
     if not isinstance(value, list) or not all(isinstance(p, SeriesPoint) for p in value):
-        return "очікується список точок {x, y}"
+        return tr("очікується список точок {x, y}")
     return series_problem(param, value)
 
 
 def _range_problem(value: float, lo: float, hi: float) -> str | None:
-    return None if lo <= value <= hi else f"значення має бути в межах {lo:g}…{hi:g}"
+    return (
+        None
+        if lo <= value <= hi
+        else tr("значення має бути в межах {lo:g}…{hi:g}").format(lo=lo, hi=hi)
+    )
 
 
 def series_problem(param: SeriesParameter, points: Sequence[SeriesPoint]) -> str | None:
     if len(points) > param.max_points:
-        return f"максимум {param.max_points} точок"
+        return tr("максимум {max_points} точок").format(max_points=param.max_points)
     for point in points:
         if param.x_kind == "number" and not _is_number(point.x):
-            return f"ключ x «{point.x}» має бути числом"
+            return tr("ключ x «{x}» має бути числом").format(x=point.x)
         if param.x_kind == "label":
             if not isinstance(point.x, str):
-                return f"ключ x «{point.x}» має бути міткою (рядком)"
+                return tr("ключ x «{x}» має бути міткою (рядком)").format(x=point.x)
             if len(point.x) > MAX_LABEL_LEN:
-                return f"мітка «{point.x}» довша за {MAX_LABEL_LEN} символів"
+                return tr("мітка «{x}» довша за {MAX_LABEL_LEN} символів").format(
+                    x=point.x, MAX_LABEL_LEN=MAX_LABEL_LEN
+                )
         if not math.isfinite(point.y):
-            return "y має бути числом"
+            return tr("y має бути числом")
     if len({str(p.x) for p in points}) != len(points):
-        return "ключі x мають бути різними"
+        return tr("ключі x мають бути різними")
     return None
 
 
 def prop_value_problem(prop: str, value: Any) -> str | None:
     """Ukrainian reason why ``value`` can't be assigned to rule property ``prop``."""
     if prop == "color":
-        return None if isinstance(value, str) and is_hex(value) else "колір у форматі #rrggbb"
+        return None if isinstance(value, str) and is_hex(value) else tr("колір у форматі #rrggbb")
     if prop == "text":
-        return None if isinstance(value, str) else "очікується рядок"
+        return None if isinstance(value, str) else tr("очікується рядок")
     if prop == "visible":
-        return None if isinstance(value, bool) else "очікується true (показати) або false (сховати)"
+        return (
+            None
+            if isinstance(value, bool)
+            else tr("очікується true (показати) або false (сховати)")
+        )
     if not _is_number(value):
-        return "очікується число"
+        return tr("очікується число")
     if prop == "opacity" and not 0 <= value <= 100:
-        return "непрозорість від 0 до 100 %"
+        return tr("непрозорість від 0 до 100 %")
     return None
